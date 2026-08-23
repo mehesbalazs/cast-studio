@@ -1,0 +1,1461 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cast Studio</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>">
+<style>
+  :root{
+    --bg:#0d1117; --panel:#151b23; --panel2:#1b222c; --hover:#212a36;
+    --line:#2a3340; --text:#e6edf3; --dim:#8b98a9; --dim2:#5f6c7b;
+    --accent:#4c8dff; --ok:#2ea86a; --warn:#d99b2b; --bad:#e0574d;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    display:flex; flex-direction:column; overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font:inherit; color:inherit; background:none; border:0; cursor:pointer}
+  button:disabled{opacity:.35; cursor:default}
+  input,select{font:inherit; color:inherit}
+
+  /* ---------- fejléc ---------- */
+  header{
+    display:flex; align-items:center; gap:14px; padding:0 16px; height:56px;
+    background:var(--panel); border-bottom:1px solid var(--line); flex:0 0 auto;
+  }
+  .brand{font-weight:650; letter-spacing:-.01em; display:flex; align-items:center; gap:8px; font-size:15px}
+  .brand span.logo{font-size:18px}
+  .spacer{flex:1}
+  #status{font-size:12.5px; color:var(--dim); display:flex; align-items:center; gap:7px; max-width:40vw}
+  #status .dot{width:8px; height:8px; border-radius:50%; background:var(--dim2); flex:0 0 auto}
+  #status.on .dot{background:var(--ok); box-shadow:0 0 0 3px rgba(46,168,106,.18)}
+  #status.err .dot{background:var(--bad)}
+  .iconbtn{
+    width:32px; height:32px; border-radius:8px; display:grid; place-items:center;
+    color:var(--dim); flex:0 0 auto;
+  }
+  .iconbtn:hover{background:var(--hover); color:var(--text)}
+  .iconbtn.active{color:var(--accent)}
+
+  /* ---------- fő elrendezés ---------- */
+  main{flex:1; display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr); min-height:0}
+  .pane{display:flex; flex-direction:column; min-height:0; min-width:0}
+  .pane + .pane{border-left:1px solid var(--line)}
+  .panehead{
+    flex:0 0 auto; padding:10px 14px; border-bottom:1px solid var(--line);
+    display:flex; flex-direction:column; gap:9px; background:var(--panel);
+  }
+  .panetitle{display:flex; align-items:center; gap:10px; font-weight:600; font-size:12px;
+    text-transform:uppercase; letter-spacing:.07em; color:var(--dim)}
+  .count{background:var(--panel2); border:1px solid var(--line); border-radius:20px;
+    padding:1px 8px; font-size:11px; letter-spacing:0; text-transform:none; color:var(--dim)}
+  .scroll{flex:1; overflow-y:auto; overflow-x:hidden; padding:6px 8px 14px}
+
+  /* ---------- morzsa + eszköztár ---------- */
+  .crumbs{display:flex; align-items:center; gap:2px; flex-wrap:wrap; font-size:13px; min-height:24px}
+  .crumbs button{padding:3px 7px; border-radius:6px; color:var(--dim); max-width:220px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .crumbs button:hover{background:var(--hover); color:var(--text)}
+  .crumbs button:last-child{color:var(--text); font-weight:560}
+  .crumbs .sep{color:var(--dim2); font-size:11px}
+  .tools{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .search{flex:1; min-width:120px; position:relative; display:flex; align-items:center}
+  .search svg{position:absolute; left:9px; color:var(--dim2); pointer-events:none}
+  .search input{
+    width:100%; background:var(--bg); border:1px solid var(--line); border-radius:8px;
+    padding:6px 10px 6px 30px; outline:none;
+  }
+  .search input:focus{border-color:var(--accent)}
+  .chk{display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--dim); cursor:pointer;
+    user-select:none; white-space:nowrap}
+  .chk input{accent-color:var(--accent); margin:0}
+  .btn{
+    border:1px solid var(--line); background:var(--panel2); border-radius:8px;
+    padding:6px 11px; font-size:12.5px; display:inline-flex; align-items:center; gap:6px;
+    white-space:nowrap;
+  }
+  .btn:hover:not(:disabled){background:var(--hover); border-color:#39434f}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:560}
+  .btn.primary:hover:not(:disabled){filter:brightness(1.1)}
+  .btn.ghost{background:none}
+  .btn.pulse{animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(76,141,255,.5)}50%{box-shadow:0 0 0 6px rgba(76,141,255,0)}}
+
+  /* ---------- listasorok ---------- */
+  .row{
+    display:flex; align-items:center; gap:10px; padding:7px 9px; border-radius:8px;
+    cursor:pointer; user-select:none; min-width:0;
+  }
+  .row:hover{background:var(--hover)}
+  .row .ico{width:20px; text-align:center; flex:0 0 auto; font-size:15px; opacity:.9}
+  .row .name{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .row .meta{color:var(--dim2); font-size:12px; flex:0 0 auto; font-variant-numeric:tabular-nums}
+  .row .acts{display:flex; gap:4px; opacity:0; flex:0 0 auto}
+  .row:hover .acts{opacity:1}
+  .row .acts button{width:26px; height:26px; border-radius:6px; color:var(--dim);
+    display:grid; place-items:center; background:var(--panel2)}
+  .row .acts button:hover{background:var(--accent); color:#fff}
+  .badge{font-size:10px; padding:1px 6px; border-radius:5px; flex:0 0 auto;
+    border:1px solid transparent; letter-spacing:.02em; font-weight:560}
+  .badge.transcode{color:var(--bad); border-color:rgba(224,87,77,.35); background:rgba(224,87,77,.1)}
+  .badge.sub{color:var(--dim); border-color:var(--line); background:var(--panel2)}
+  .badge.resume{color:var(--accent); border-color:rgba(76,141,255,.4); background:rgba(76,141,255,.12)}
+  .empty{color:var(--dim2); text-align:center; padding:36px 20px; font-size:13px; line-height:1.6}
+
+  /* ---------- lejátszási sor ---------- */
+  #queue .row{padding:6px 9px}
+  #queue .row.playing{background:rgba(76,141,255,.12)}
+  #queue .row.playing .name{color:var(--accent); font-weight:560}
+  #queue .row.dragging{opacity:.4}
+  #queue .row.over{box-shadow:inset 0 2px 0 var(--accent)}
+  #queue .row.over-below{box-shadow:inset 0 -2px 0 var(--accent)}
+  #queue .idx{width:22px; text-align:right; color:var(--dim2); font-size:11.5px;
+    font-variant-numeric:tabular-nums; flex:0 0 auto}
+  .grip{color:var(--dim2); cursor:grab; flex:0 0 auto; opacity:0}
+  #queue .row:hover .grip{opacity:1}
+
+  /* ---------- lejátszó ---------- */
+  footer{
+    flex:0 0 auto; background:var(--panel); border-top:1px solid var(--line);
+    padding:9px 16px 11px; display:flex; flex-direction:column; gap:7px;
+  }
+  .seekrow{display:flex; align-items:center; gap:12px}
+  .time{font-size:11.5px; color:var(--dim); font-variant-numeric:tabular-nums;
+    width:58px; flex:0 0 auto; letter-spacing:.01em}
+  .time.right{text-align:right}
+
+  /* Csúszkák: a megtett rész kitöltve, hogy egy pillantásra látszódjon. */
+  input[type=range]{
+    --fill:0%;
+    -webkit-appearance:none; appearance:none; background:transparent;
+    flex:1; height:18px; margin:0; cursor:pointer; min-width:0;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:5px; border-radius:99px;
+    background:linear-gradient(to right, var(--accent) var(--fill), var(--line) var(--fill));
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:12px; height:12px; border-radius:50%;
+    background:#fff; margin-top:-3.5px; box-shadow:0 1px 4px rgba(0,0,0,.55);
+    transition:transform .12s ease;
+  }
+  input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.25)}
+  input[type=range]:active::-webkit-slider-thumb{transform:scale(1.35)}
+  input[type=range]:disabled{opacity:.35; cursor:default}
+  input[type=range]:disabled::-webkit-slider-runnable-track{background:var(--line)}
+  input[type=range]:disabled::-webkit-slider-thumb{display:none}
+
+  /* Három oszlop: a középső mindig pontosan középen marad, bármilyen
+     széles a két szélső - flexboxszal a hangerősáv tolta el a gombokat. */
+  .ctrlrow{
+    display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+    align-items:center; gap:14px;
+  }
+  .nowplaying{display:flex; align-items:center; gap:11px; min-width:0}
+  .nowplaying .art{
+    width:40px; height:40px; border-radius:10px; flex:0 0 auto;
+    display:grid; place-items:center; font-size:18px;
+    background:var(--panel2); border:1px solid var(--line);
+  }
+  .nowplaying .meta{min-width:0; display:flex; flex-direction:column; gap:2px}
+  .nowplaying .t{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-weight:600; font-size:13.5px; letter-spacing:-.01em}
+  .nowplaying .s{font-size:11.5px; color:var(--dim); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap}
+  .transport{display:flex; align-items:center; gap:6px; justify-self:center}
+  /* Négy gomb van, ezért a csoport közepe nem a play gomb közepe. A bal
+     oldali térköz pont annyi, hogy a play kerüljön a képernyő közepére. */
+  .transport{padding-left:40px}
+  .transport .iconbtn{width:34px; height:34px; border-radius:50%}
+  .transport .play{
+    width:44px; height:44px; border-radius:50%; background:var(--accent); color:#fff;
+    box-shadow:0 2px 10px rgba(76,141,255,.35);
+  }
+  .transport .play:hover:not(:disabled){filter:brightness(1.12); transform:scale(1.04)}
+  .transport .play:active:not(:disabled){transform:scale(.96)}
+  .transport .play:disabled{background:var(--panel2); color:var(--dim2); box-shadow:none}
+  .volwrap{display:flex; align-items:center; gap:8px; width:136px; justify-self:end}
+  .volwrap input[type=range]{height:16px}
+
+  /* ---------- helyi előnézet ---------- */
+  #stage{
+    display:none; position:relative; background:#000; border-bottom:1px solid var(--line);
+    flex:0 0 auto;
+  }
+  #stage.on{display:block}
+  #stage video,#stage img{display:block; width:100%; max-height:38vh; object-fit:contain; background:#000}
+  #stage .close{position:absolute; top:8px; right:8px; background:rgba(0,0,0,.6); border-radius:8px}
+
+  /* ---------- beállítások ---------- */
+  #settings{display:none; background:var(--panel2); border-bottom:1px solid var(--line);
+    padding:14px 16px; flex:0 0 auto}
+  #settings.on{display:block}
+  .setgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px 26px; max-width:1100px}
+  .field{display:flex; flex-direction:column; gap:5px}
+  .field label:not(.chk){font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim)}
+  .field .chk{white-space:normal; color:var(--text); font-size:13px; align-items:flex-start; line-height:1.4}
+  .field .chk input{margin-top:2px}
+  .field select,.field input[type=text]{
+    background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:6px 9px; outline:none;
+  }
+  .field .hint{font-size:11.5px; color:var(--dim2); line-height:1.5; overflow-wrap:anywhere}
+
+  /* ---------- értesítések ---------- */
+  #toasts{position:fixed; bottom:96px; left:50%; transform:translateX(-50%); z-index:50;
+    display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none}
+  .toast{
+    background:var(--panel2); border:1px solid var(--line); border-radius:10px;
+    padding:9px 15px; font-size:13px; box-shadow:0 10px 30px rgba(0,0,0,.45);
+    animation:rise .18s ease-out; max-width:min(560px,90vw);
+  }
+  .toast.bad{border-color:rgba(224,87,77,.5)}
+  .toast.good{border-color:rgba(46,168,106,.45)}
+  @keyframes rise{from{opacity:0; transform:translateY(8px)}to{opacity:1; transform:none}}
+
+  #banner{
+    display:none; background:rgba(224,87,77,.12); border-bottom:1px solid rgba(224,87,77,.4);
+    color:#ffc9c4; padding:10px 16px; font-size:13px; line-height:1.5; flex:0 0 auto;
+  }
+  #banner.on{display:block}
+  #banner code{background:rgba(0,0,0,.35); padding:1px 6px; border-radius:5px}
+
+  .scroll::-webkit-scrollbar{width:10px}
+  .scroll::-webkit-scrollbar-thumb{background:#2c3541; border-radius:6px; border:3px solid var(--panel)}
+  .scroll::-webkit-scrollbar-thumb:hover{background:#3a4552}
+  .scroll::-webkit-scrollbar-track{background:transparent}
+
+  /* ---------- csiszolás ---------- */
+  header{box-shadow:0 1px 0 rgba(0,0,0,.25)}
+  .brand span.logo{
+    width:26px; height:26px; border-radius:7px; display:grid; place-items:center;
+    background:var(--panel2); border:1px solid var(--line); font-size:14px;
+  }
+  footer{box-shadow:0 -1px 0 rgba(0,0,0,.25)}
+
+  /* Legördülők: saját nyíl, hogy ne a rendszer szürke gombja lógjon ki. */
+  select.btn{
+    -webkit-appearance:none; appearance:none; padding-right:26px;
+    background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' fill='none' stroke='%238b98a9' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 8px center; background-size:11px;
+    text-overflow:ellipsis;
+  }
+  select.btn:hover{background-color:var(--hover)}
+
+  /* Finom átmenetek - kattintható elemeken érződik, de nem lassítja a listát. */
+  .btn, .iconbtn, .row .acts button, .crumbs button{
+    transition:background-color .12s ease, border-color .12s ease,
+               color .12s ease, transform .1s ease, filter .12s ease;
+  }
+  .btn:active:not(:disabled){transform:translateY(1px)}
+  .row{transition:background-color .1s ease}
+
+  /* Billentyűzetes fókusz látszódjon - egérrel ne zavarjon. */
+  button:focus-visible, select:focus-visible, input:focus-visible, .row:focus-visible{
+    outline:2px solid var(--accent); outline-offset:2px; border-radius:8px;
+  }
+
+  /* A most játszott sor: bal oldali jelzőcsík a háttérszín mellé. */
+  #queue .row.playing{position:relative; background:rgba(76,141,255,.11)}
+  #queue .row.playing::before{
+    content:''; position:absolute; left:0; top:6px; bottom:6px; width:3px;
+    border-radius:0 3px 3px 0; background:var(--accent);
+  }
+  #queue .row.playing .idx{color:var(--accent)}
+  #queue .row.over{box-shadow:inset 0 2px 0 var(--accent)}
+  #queue .row.over-below{box-shadow:inset 0 -2px 0 var(--accent)}
+
+  .panehead{box-shadow:0 1px 0 rgba(0,0,0,.18)}
+  .empty{color:var(--dim2)}
+  .toast{backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px)}
+  #banner{box-shadow:inset 0 -1px 0 rgba(0,0,0,.2)}
+
+  /* Beállítások panel: tagoltabb elválasztás. */
+  #settings.on{box-shadow:inset 0 -1px 0 var(--line), 0 4px 12px rgba(0,0,0,.2)}
+
+  @media (max-width:860px){
+    main{grid-template-columns:1fr; grid-template-rows:1fr 1fr}
+    .pane + .pane{border-left:0; border-top:1px solid var(--line)}
+    #status{display:none}
+  }
+  @media (max-width:620px){
+    /* Kis szélességen a hangerő kimarad, a gombok a cím mellé jobbra kerülnek.
+       Itt nincs mit középre igazítani, ezért a kiegyensúlyozó térköz sem kell. */
+    .ctrlrow{grid-template-columns:minmax(0,1fr) auto; gap:10px}
+    .transport{padding-left:0; justify-self:end}
+    .volwrap{display:none}
+    .nowplaying .art{width:34px; height:34px; font-size:16px}
+    .time{width:46px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><span class="logo">📺</span> Cast Studio</div>
+  <div class="spacer"></div>
+  <div id="status"><span class="dot"></span><span class="txt">Eszköz keresése…</span></div>
+  <select id="renderer" class="btn" style="min-width:170px; padding:5px 8px" title="Cél TV">
+    <option value="">Nincs eszköz</option>
+  </select>
+  <button class="iconbtn" id="btnDiscover" title="TV-k keresése újra">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+      <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
+    </svg>
+  </button>
+  <button class="iconbtn" id="btnSettings" title="Beállítások">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  </button>
+</header>
+
+<div id="banner"></div>
+
+<div id="settings">
+  <div class="setgrid">
+    <div class="field">
+      <label>Médiakiszolgáló címe (amit a TV lát)</label>
+      <select id="setBase"></select>
+      <div class="hint">Ha a TV nem tölti be a fájlt, válts másik hálózati címre.</div>
+    </div>
+    <div class="field">
+      <label>A TV által elfogadott formátumok</label>
+      <div class="hint" id="mimeHint">Válassz TV-t, és ide kerül, mit visz.</div>
+      <div class="hint" id="mimeList" style="max-height:64px; overflow:auto"></div>
+    </div>
+    <div class="field">
+      <label>Feliratok</label>
+      <label class="chk"><input type="checkbox" id="setSubs" checked> Felirat küldése, ha van a fájl mellett</label>
+      <label class="chk"><input type="checkbox" id="setResume" checked> Folytatás onnan, ahol abbahagytad</label>
+      <div class="hint">A TV-k eltérően kezelik a külső feliratot – ha nem jelenik meg, a fájlba ágyazott sáv a biztos megoldás.</div>
+    </div>
+    <div class="field">
+      <label>Fájlböngésző</label>
+      <label class="chk"><input type="checkbox" id="setHidden"> Rejtett fájlok mutatása</label>
+      <div class="hint" id="rootHint"></div>
+      <div class="hint" id="stateHint"></div>
+    </div>
+  </div>
+</div>
+
+<div id="stage">
+  <video id="localVideo" controls playsinline></video>
+  <img id="localImage" hidden alt="">
+  <button class="iconbtn close" id="btnCloseStage" title="Előnézet bezárása">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </button>
+</div>
+
+<main>
+  <!-- ---------------- fájlböngésző ---------------- -->
+  <section class="pane">
+    <div class="panehead">
+      <div class="panetitle">
+        Fájlok
+        <span class="count" id="dirCount"></span>
+        <div class="spacer"></div>
+        <select id="shortcuts" class="btn" style="padding:5px 8px; min-width:130px"></select>
+      </div>
+      <div class="crumbs" id="crumbs"></div>
+      <div class="tools">
+        <div class="search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="filter" type="text" placeholder="Szűrés ebben a mappában…" spellcheck="false">
+        </div>
+        <label class="chk" title="Mappa hozzáadásakor az almappák is"><input type="checkbox" id="recursive"> Almappákkal</label>
+        <button class="btn" id="btnAddAll">Mind a sorba</button>
+      </div>
+    </div>
+    <div class="scroll" id="browser"></div>
+  </section>
+
+  <!-- ---------------- lejátszási sor ---------------- -->
+  <section class="pane">
+    <div class="panehead">
+      <div class="panetitle">
+        Lejátszási sor
+        <span class="count" id="qCount">0 elem</span>
+        <div class="spacer"></div>
+        <button class="btn ghost" id="btnShuffle" title="Sor összekeverése">Keverés</button>
+        <button class="btn ghost" id="btnClear" title="Sor ürítése">Ürítés</button>
+      </div>
+      <div class="tools">
+        <button class="btn primary" id="btnSend" disabled>Küldés a TV-re</button>
+        <select id="repeat" class="btn" style="padding:5px 8px; min-width:130px">
+          <option value="OFF">Ismétlés: ki</option>
+          <option value="ALL">Ismétlés: teljes sor</option>
+          <option value="SINGLE">Ismétlés: egy elem</option>
+        </select>
+        <div class="spacer"></div>
+        <span class="meta" id="qTotal" style="color:var(--dim2); font-size:12px"></span>
+      </div>
+    </div>
+    <div class="scroll" id="queue"></div>
+  </section>
+</main>
+
+<!-- ---------------- lejátszó ---------------- -->
+<footer>
+  <div class="seekrow">
+    <span class="time" id="tCur">0:00</span>
+    <input type="range" id="seek" min="0" max="100" value="0" step="0.1" disabled>
+    <span class="time right" id="tDur">0:00</span>
+  </div>
+  <div class="ctrlrow">
+    <div class="nowplaying">
+      <div class="art" id="npArt">🎬</div>
+      <div class="meta">
+        <div class="t" id="npTitle">Nincs lejátszás alatt</div>
+        <div class="s" id="npSub">Tallózz be fájlokat, majd küldd a TV-re</div>
+      </div>
+    </div>
+    <div class="transport">
+      <button class="iconbtn" id="btnPrev" title="Előző (Shift+←)" disabled>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM20 6v12l-9-6z"/></svg>
+      </button>
+      <button class="iconbtn play" id="btnPlay" title="Lejátszás / szünet (szóköz)" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" id="playIcon"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <button class="iconbtn" id="btnNext" title="Következő (Shift+→)" disabled>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4 6v12l9-6z"/></svg>
+      </button>
+      <button class="iconbtn" id="btnStop" title="Leállítás" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+      </button>
+    </div>
+    <div class="volwrap">
+      <button class="iconbtn" id="btnMute" title="Némítás" style="width:28px;height:28px">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" id="volIcon"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 12a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
+      </button>
+      <input type="range" id="vol" min="0" max="100" step="1" value="30">
+    </div>
+  </div>
+</footer>
+
+<div id="toasts"></div>
+
+<script>
+(function () {
+'use strict';
+
+// =========================================================================
+// Állapot
+// =========================================================================
+var $ = function (s) { return document.querySelector(s); };
+var TOKEN = new URLSearchParams(location.search).get('t') || '';
+
+var S = { base: '', subs: true, hidden: false, recursive: false,
+          repeat: 'OFF', volume: 30, udn: '', resume: true };
+var RESUME = {};                // útvonal -> hány másodpercnél tartasz benne
+var lastStamp = '';             // mikor érdemes újrakérni a folytatási pontokat
+var INFO = null;
+var cwd = null;
+var listing = { dirs: [], files: [] };
+var queue = [];
+
+var TV = null;              // a kiválasztott renderer
+var MIMES = [];             // amit a TV elfogad
+var ST = {};                // legutóbbi szerveroldali állapot
+var current = -1;
+var dirty = true;           // a szerveren lévő sor eltér-e a helyitől
+var seeking = false;
+var localMode = false;
+var poller = null;
+var playingPath = '';       // a játszott elem azonosítója (az index csúszhat)
+var stateSeq = 0;           // hányadik állapotlekérdezést indítottuk
+var stateApplied = 0;       // a legfrissebb, amit már alkalmaztunk
+var pollBusy = false;       // van-e éppen válaszra váró lekérdezés
+var holdPoll = 0;           // eddig a saját parancsunk válasza az igazság
+var browseSeq = 0;          // ugyanez a mappalistára
+var browsing = false;       // fut-e éppen mappaváltás
+var sending = false;        // fut-e éppen küldés a TV-re
+var discovering = false;    // fut-e éppen TV-keresés
+var reDiscover = 0;         // mikor néztünk utoljára eltűnt TV után
+var seekWish = -1;          // ahova tekertél; amíg a TV oda nem ér, ezt mutatjuk
+var seekWishAt = 0;
+var pollFails = 0;          // hány állapotlekérdezés bukott el egymás után
+var utolsoHibaId = 0;       // melyik szerverüzenetet mutattuk már meg
+var stateRev = 0;           // melyik állapotra épül, amit menteni akarunk
+
+var lv = $('#localVideo'), limg = $('#localImage');
+
+// Az app semmit nem hagy a böngészőben: az állapot a szerver data/state.json
+// fájljába kerül, tehát a mappával együtt költözik.
+var persistTimer = null;
+var ready = false;              // amíg be nem töltöttük, nem írunk vissza
+function persist() {
+  if (!ready) return;
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(function () {
+    persistTimer = null;
+    post('/api/state', { rev: stateRev, settings: S, queue: queue, cwd: cwd || '' })
+      .then(function (st) { if (st && typeof st.rev === 'number') stateRev = st.rev; })
+      .catch(function (e) {
+        if (/409/.test(e.message || '')) {
+          // Egy másik megnyitott lap közben átírta a sort. Az övét nem söpörjük
+          // el: inkább szólunk, hogy melyik ablak az érvényes.
+          toast('Egy másik lapon módosult a lejátszási sor. Töltsd újra az oldalt, ' +
+                'hogy azt lásd, ami el van mentve.', 'bad');
+          return;
+        }
+        // Elhallgatva a sor és a beállítások nyom nélkül elvesznének:
+        // a felhasználó csak a következő indításnál venné észre.
+        toast('Nem sikerült elmenteni a beállításokat és a sort: ' + e.message, 'bad');
+      });
+  }, 400);
+}
+function saveSettings() { persist(); }
+
+// A Cast-os verzió a böngészőbe mentett – takarítsuk el magunk után.
+function clearLegacyStorage() {
+  try {
+    ['cast-studio-settings', 'cast-studio-queue', 'cast-studio-cwd']
+      .forEach(function (k) { localStorage.removeItem(k); });
+  } catch (e) {}
+}
+
+// =========================================================================
+// Segédfüggvények
+// =========================================================================
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function fmtSize(b) {
+  if (!b) return '';
+  var u = ['B', 'KB', 'MB', 'GB', 'TB'], i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return (b < 10 && i > 0 ? b.toFixed(1) : Math.round(b)) + ' ' + u[i];
+}
+function fmtTime(s) {
+  if (!isFinite(s) || s < 0) s = 0;
+  s = Math.floor(s);
+  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+  var p = function (n) { return (n < 10 ? '0' : '') + n; };
+  return h ? h + ':' + p(m) + ':' + p(x) : m + ':' + p(x);
+}
+function baseName(p) { return p.replace(/\\/g, '/').split('/').pop(); }
+function dirName(p) { return baseName(p.replace(/[\\/][^\\/]*$/, '')); }
+function titleOf(it) { return it.name.replace(/\.[^.]+$/, ''); }
+function iconOf(k) { return k === 'audio' ? '🎵' : k === 'image' ? '🖼️' : '🎬'; }
+
+function toast(msg, cls) {
+  var el = document.createElement('div');
+  el.className = 'toast ' + (cls || '');
+  el.textContent = msg;
+  $('#toasts').appendChild(el);
+  setTimeout(function () { el.remove(); }, cls === 'bad' ? 6500 : 3200);
+}
+function banner(html) {
+  var b = $('#banner');
+  if (!html) { b.className = ''; return; }
+  b.innerHTML = html;
+  b.className = 'on';
+}
+// A csúszka megtett részének kifestése. Minden helyen meg kell hívni, ahol
+// az értéket kódból állítjuk - különben a kitöltés elmarad az értéktől.
+function paintRange(el) {
+  if (!el) return;
+  var min = +el.min || 0, max = +el.max || 100, val = +el.value || 0;
+  var pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
+  el.style.setProperty('--fill', Math.max(0, Math.min(100, pct)).toFixed(2) + '%');
+}
+
+function setStatus(txt, cls) {
+  $('#status').className = cls || '';
+  $('#status .txt').textContent = txt;
+}
+
+function api(path, params) {
+  var u = new URL(path, location.origin);
+  Object.keys(params || {}).forEach(function (k) {
+    if (params[k] !== undefined && params[k] !== null && params[k] !== '')
+      u.searchParams.set(k, params[k]);
+  });
+  if (TOKEN) u.searchParams.set('t', TOKEN);
+  return fetch(u.toString()).then(function (r) {
+    return r.json().then(function (j) {
+      if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+      return j;
+    });
+  });
+}
+function post(path, body) {
+  var u = new URL(path, location.origin);
+  if (TOKEN) u.searchParams.set('t', TOKEN);
+  return fetch(u.toString(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function (r) {
+    return r.json().then(function (j) {
+      if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+      return j;
+    });
+  });
+}
+
+// A helyi előnézet mindig a localhostot használja (azonos eredet kell).
+function localUrl(it) {
+  var u = new URL('/api/media', location.origin);
+  u.searchParams.set('path', it.path);
+  if (TOKEN) u.searchParams.set('t', TOKEN);
+  return u.toString();
+}
+function localSubUrl(sub) {
+  var u = new URL('/api/sub', location.origin);
+  u.searchParams.set('path', sub.path);
+  if (TOKEN) u.searchParams.set('t', TOKEN);
+  return u.toString();
+}
+
+// A TV saját listája dönt arról, mit visz – nem tippelünk kiterjesztésből.
+// Csak a kiválasztott TV listája alapján jelölünk – TV nélkül nem tippelünk.
+function supportOf(it) {
+  if (!MIMES.length) return 'unknown';
+  return MIMES.indexOf(it.mime) >= 0 ? 'ok' : 'no';
+}
+
+// =========================================================================
+// TV-felderítés és -vezérlés
+// =========================================================================
+function discover(quiet) {
+  if (discovering) return Promise.resolve();
+  discovering = true;
+  $('#btnDiscover').disabled = true;
+  if (!quiet) setStatus('TV-k keresése…');
+  return api('/api/dlna/discover', { timeout: 5 }).then(function (d) {
+    var sel = $('#renderer');
+    var list = d.renderers || [];
+    sel.innerHTML = list.length
+      ? list.map(function (r) {
+          return '<option value="' + esc(r.udn) + '">' + esc(r.name) + '</option>';
+        }).join('')
+      : '<option value="">Nincs DLNA eszköz</option>';
+
+    if (!list.length) {
+      TV = null; MIMES = [];
+      setStatus('Nem található DLNA eszköz', 'err');
+      banner('Nem látszik DLNA-képes TV a hálózaton. Kapcsold be a TV-t, és ellenőrizd, ' +
+        'hogy ugyanazon a Wi-Fi hálózaton van-e, mint ez a gép.');
+      renderQueue();
+      return;
+    }
+    banner('');
+    var want = list.some(function (r) { return r.udn === S.udn; }) ? S.udn : list[0].udn;
+    sel.value = want;
+    return selectRenderer(want);
+  }).catch(function (e) {
+    setStatus('Keresési hiba: ' + e.message, 'err');
+  }).then(function () {
+    discovering = false;
+    $('#btnDiscover').disabled = false;
+  });
+}
+
+function selectRenderer(udn) {
+  var maradt = !!(TV && TV.udn === udn);
+  return api('/api/dlna/select', { udn: udn }).then(function (st) {
+    S.udn = udn; saveSettings();
+    // Csak akkor tekintjük "elküldendőnek" a sort, ha tényleg más készülékre
+    // váltottunk. Ugyanaz a TV újraválasztva nem indokolja az újraküldést.
+    if (!maradt) dirty = true;
+    stateApplied = ++stateSeq;
+    applyState(st);
+    if (TV) {
+      toast('Csatlakozva: ' + TV.name + (MIMES.length ? ' · ' + MIMES.length + ' formátum' : ''), 'good');
+      renderMimes();
+      renderBrowser();
+      startPolling();
+    }
+  }).catch(function (e) { toast(e.message, 'bad'); });
+}
+
+function renderMimes() {
+  if (!TV) return;
+  var groups = { 'videó': [], 'hang': [], 'kép': [] };
+  MIMES.forEach(function (m) {
+    var g = m.indexOf('video/') === 0 ? 'videó' : m.indexOf('audio/') === 0 ? 'hang'
+      : m.indexOf('image/') === 0 ? 'kép' : null;
+    if (g) groups[g].push(m.split('/')[1].replace(/^x-/, '').toUpperCase());
+  });
+  $('#mimeHint').textContent = TV.name + ' – ' + MIMES.length + ' formátum';
+  $('#mimeList').innerHTML = Object.keys(groups).filter(function (g) {
+    return groups[g].length;
+  }).map(function (g) {
+    return '<b>' + g + ':</b> ' + esc(groups[g].join(', '));
+  }).join('<br>');
+}
+
+function syncCurrent() {
+  // Az indexet nem lehet két lista között átvinni: a sor átrendeződhet, elem
+  // eshet ki belőle. A játszott fájl útvonala viszont ugyanaz marad.
+  var at = -1;
+  if (playingPath) {
+    for (var i = 0; i < queue.length; i++) {
+      if (queue[i].path === playingPath) { at = i; break; }
+    }
+  }
+  if (at === current) return false;
+  current = at;
+  return true;
+}
+
+function applyState(st, seq) {
+  // Egy lassú válasz megelőzheti a nála frissebbet. Ha a régit alkalmaznánk,
+  // a csúszka visszaugrana, a szünet gomb pedig visszabillenne lejátszásra.
+  if (seq !== undefined) {
+    if (seq <= stateApplied) return;
+    stateApplied = seq;
+  }
+  ST = st || {};
+  TV = ST.renderer || null;
+  MIMES = ST.mimes || [];
+
+  // A folytatási pontokat akkor kérjük le, amikor változhattak: a lejátszás
+  // állapotának váltásakor (indulás, szünet, leállás, elemváltás).
+  var stamp = (ST.state || '') + '#' + ST.index;
+  if (stamp !== lastStamp) {
+    lastStamp = stamp;
+    refreshResume();
+  }
+
+  if (TV && ST.online === false) {
+    setStatus(TV.name + ' · nem válaszol', 'err');
+  } else if (TV) {
+    var label = { PLAYING: 'lejátszás', PAUSED_PLAYBACK: 'szüneteltetve',
+      TRANSITIONING: 'betöltés', STOPPED: 'áll', NO_MEDIA_PRESENT: 'kész' };
+    setStatus(TV.name + ' · ' + (label[ST.state] || (ST.state || '').toLowerCase()), 'on');
+  } else {
+    // A szerver elveszítette a készüléket: ezt ki kell mondani, mert a zöld
+    // pont és a régi állapotfelirat különben azt sugallná, hogy minden rendben.
+    setStatus('Nincs kapcsolat a TV-vel', 'err');
+    if (!localMode) {
+      $('#npTitle').textContent = 'Nincs lejátszás alatt';
+      $('#npSub').textContent = 'Tallózz be fájlokat, majd küldd a TV-re';
+      setPlayIcon(false);
+    }
+  }
+
+  if (!localMode) {
+    if (ST.path !== playingPath) seekWish = -1;   // más elem megy: nincs mit tartani
+    playingPath = ST.path || '';
+    if (syncCurrent()) renderQueue();
+  }
+
+  if (!localMode) {
+    var dur = ST.duration || 0, pos = ST.position || 0;
+    // Tekerés után a készülék még másodpercekig a RÉGI helyet jelenti. Ha ezt
+    // kiírnánk, a csúszka visszaesne oda, ahonnan éppen elhúztad.
+    if (seekWish >= 0) {
+      if (Math.abs(pos - seekWish) < 5 || Date.now() - seekWishAt > 8000) seekWish = -1;
+      else pos = seekWish;
+    }
+    if (!seeking) {
+      $('#seek').max = dur > 0 ? dur : 100;
+      $('#seek').value = pos;
+      $('#seek').disabled = !(dur > 0);
+      paintRange($('#seek'));
+    }
+    $('#tCur').textContent = fmtTime(pos);
+    $('#tDur').textContent = dur > 0 ? fmtTime(dur) : '–:––';
+    setPlayIcon(ST.state === 'PLAYING');
+
+    // Több készülék (köztük ez a Hisense) mindig 0-t jelent vissza hangerőnek.
+    // Ilyenkor a saját, ismert értékünket mutatjuk, ne ugorjon a csúszka nullára.
+    if (typeof ST.volume === 'number' && document.activeElement !== $('#vol')) {
+      if (ST.volume > 0 || !(S.volume > 0)) {
+        $('#vol').value = ST.volume;
+      }
+      paintRange($('#vol'));
+    }
+    setMuteIcon(!!ST.muted);
+    // A szerver visszautasíthat egy ismétlési módot; a legördülő ne mutasson
+    // mást, mint ami valójában érvényes.
+    if (ST.repeat && ST.repeat !== $('#repeat').value
+        && document.activeElement !== $('#repeat')) {
+      $('#repeat').value = ST.repeat;
+      S.repeat = ST.repeat;
+    }
+
+    if (ST.title) {
+      $('#npTitle').textContent = ST.title;
+      $('#npSub').textContent = TV ? TV.name + (TV.model ? ' · ' + TV.model : '') : '';
+      var cur = queue[current];
+      $('#npArt').textContent = iconOf(cur ? cur.kind : 'video');
+    }
+  }
+
+  // Az üzenetnek azonosítója van: így két megnyitott lap közül nem eszi meg
+  // az egyik a másik elől, és ugyanaz sem ugrik fel újra meg újra.
+  if (ST.error && ST.errorId && ST.errorId !== utolsoHibaId) {
+    utolsoHibaId = ST.errorId;
+    toast(ST.error, 'bad');
+  }
+  updateTransport();
+  updateSendButton();
+}
+
+function refreshResume() {
+  if (S.resume === false) {           // ki van kapcsolva: ne is ígérjük
+    if (Object.keys(RESUME).length) { RESUME = {}; renderQueue(); }
+    return;
+  }
+  api('/api/state', {}).then(function (st) {
+    var pts = st.positions || {}, next = {};
+    Object.keys(pts).forEach(function (k) {
+      if (pts[k] && pts[k].pos > 0) next[k] = pts[k].pos;
+    });
+    if (JSON.stringify(next) !== JSON.stringify(RESUME)) {
+      RESUME = next;
+      renderQueue();
+    }
+  }).catch(function () {});
+}
+
+function startPolling() {
+  if (poller) return;
+  poller = setInterval(function () {
+    if (localMode) return;
+    if (Date.now() < holdPoll) return;    // a saját parancsunk friss válasza áll
+    if (pollBusy) return;                 // ne torlódjanak a kérések
+    if (!TV) {
+      // Elveszett a készülék (szerver újraindult, TV lecsatlakozott). A
+      // lekérdezés leállítása helyett időnként megpróbáljuk újra megkeresni.
+      if (Date.now() - reDiscover < 15000) return;
+      reDiscover = Date.now();
+      discover(true);
+      return;
+    }
+    pollBusy = true;
+    var seq = ++stateSeq;
+    api('/api/dlna/state', {})
+      .then(function (st) { pollFails = 0; applyState(st, seq); })
+      .catch(function (e) {
+        // Némán tovább pörögni a legrosszabb: a felület a régi, zöld
+        // állapotot mutatná akkor is, ha a szerver már nem is fut.
+        if (++pollFails < 3) return;
+        var lejart = /403/.test(e && e.message || '');
+        setStatus(lejart ? 'A szerver újraindult – nyisd meg az új címet'
+                         : 'Nincs kapcsolat a szerverrel', 'err');
+        if (pollFails === 3) {
+          banner(lejart
+            ? 'A szerver újraindult, és új címet írt ki a terminálban. Ez az oldal ' +
+              'már nem jogosult – nyisd meg a terminálban látható friss linket.'
+            : 'Megszakadt a kapcsolat a <code>server.py</code>-vel. Fut még?');
+        }
+      })
+      .then(function () { pollBusy = false; });
+  }, 1000);
+}
+
+function cmd(action, params) {
+  if (!TV) { toast('Előbb válassz TV-t a fejlécben.', 'bad'); return Promise.resolve(); }
+  // A parancs válasza frissebb minden futó lekérdezésnél; a régieket eldobjuk,
+  // és rövid ideig nem engedjük, hogy egy elkésett válasz visszaírja a régit.
+  // A már ELINDÍTOTT lekérdezéseket is érvényteleníteni kell: azok a parancs
+  // előtti pillanatot hoznák vissza, és visszarántanák a csúszkát.
+  stateApplied = stateSeq;
+  holdPoll = Date.now() + 1500;
+  return api('/api/dlna/' + action, params || {})
+    .then(function (st) {
+      stateApplied = ++stateSeq;
+      applyState(st);
+      holdPoll = Date.now() + 700;
+    })
+    .catch(function (e) { holdPoll = 0; toast(e.message, 'bad'); });
+}
+
+function sendQueue(index) {
+  if (!TV) { toast('Előbb válassz TV-t a fejlécben.', 'bad'); return; }
+  if (!queue.length) return;
+  if (sending) return;        // a küldés másodpercekig tart: egy kattintás elég
+  if (!S.base) { toast('Nincs hálózati cím a médiakiszolgálóhoz – nézd meg a beállításokat.', 'bad'); return; }
+  localStop();
+  sending = true;
+  var btn = $('#btnSend');
+  btn.disabled = true;
+  btn.textContent = 'Küldés…';
+  var items = queue.map(function (it) {
+    return { path: it.path, title: titleOf(it), subs: S.subs ? (it.subs || []) : [] };
+  });
+  post('/api/dlna/queue', {
+    items: items, index: index || 0, base: S.base, repeat: S.repeat
+  }).then(function (st) {
+    dirty = false;
+    stateApplied = ++stateSeq;
+    applyState(st);
+    refreshResume();
+    var kimaradt = st.skipped || [];
+    if (kimaradt.length) {
+      // A szerver kihagyja azt, amit már nem talál. Ha ezt elhallgatnánk, a
+      // felület más elemet jelölne meg játszóként, mint ami valójában megy.
+      toast(kimaradt.length + ' fájl kimaradt (hiányzik vagy üres): ' +
+        kimaradt.slice(0, 3).join(', ') + (kimaradt.length > 3 ? '…' : ''), 'bad');
+      var elo = st.paths || [];
+      if (elo.length) {
+        queue = queue.filter(function (it) { return elo.indexOf(it.path) >= 0; });
+        persist();
+      }
+    }
+    toast('Elindítva a TV-n (' + (st.paths ? st.paths.length : items.length) + ' elem)', 'good');
+    startPolling();
+  }).catch(function (e) {
+    toast(e.message, 'bad');
+    banner('A TV nem fogadta el a fájlt. Ellenőrizd, hogy a <b>' + esc(S.base) +
+      '</b> cím elérhető-e róla, és hogy a formátum szerepel-e a TV listáján.');
+  }).then(function () {
+    sending = false;
+    updateSendButton();
+  });
+}
+
+// =========================================================================
+// Fájlböngésző
+// =========================================================================
+function browse(path, fallback) {
+  // Két gyors kattintás közül a lassabb válasz érkezhet később: az sorsolná
+  // el, melyik mappában kötsz ki. Ezért csak a legfrissebb kérést fogadjuk el.
+  var seq = ++browseSeq;
+  browsing = true;
+  return api('/api/browse', { path: path, hidden: S.hidden ? 1 : 0 })
+    .then(function (data) {
+      if (seq !== browseSeq) return;
+      cwd = data.path;
+      listing = data;
+      persist();
+      renderCrumbs(data.crumbs);
+      renderBrowser();
+    })
+    .catch(function (e) {
+      // A mentett mappa kieshet a gyökérből (--root változott, lemez lecsatolva):
+      // ilyenkor ne maradjon üresen a lista, hanem ugorjunk vissza a gyökérre.
+      if (seq !== browseSeq) return;
+      if (fallback && path !== fallback) {
+        toast('A korábbi mappa nem érhető el – vissza a gyökérre.');
+        return browse(fallback);
+      }
+      toast(e.message, 'bad');
+    })
+    .then(function () { if (seq === browseSeq) browsing = false; });
+}
+
+function renderCrumbs(crumbs) {
+  $('#crumbs').innerHTML = (crumbs || []).map(function (c, i) {
+    return (i ? '<span class="sep">/</span>' : '') +
+      '<button data-path="' + esc(c.path) + '">' + esc(c.name) + '</button>';
+  }).join('');
+}
+
+function renderBrowser() {
+  var f = ($('#filter').value || '').toLowerCase();
+  var dirs = listing.dirs.filter(function (d) { return !f || d.name.toLowerCase().indexOf(f) >= 0; });
+  var files = listing.files.filter(function (x) { return !f || x.name.toLowerCase().indexOf(f) >= 0; });
+  var html = '';
+
+  if (listing.parent) {
+    html += '<div class="row" data-dir="' + esc(listing.parent) + '">' +
+      '<span class="ico">↩︎</span><span class="name" style="color:var(--dim)">Vissza</span></div>';
+  }
+  dirs.forEach(function (d) {
+    html += '<div class="row" data-dir="' + esc(d.path) + '">' +
+      '<span class="ico">📁</span>' +
+      '<span class="name">' + esc(d.name) + '</span>' +
+      '<span class="acts"><button data-addDir="' + esc(d.path) + '" title="Mappa a sorba">+</button></span>' +
+      '</div>';
+  });
+  files.forEach(function (x) {
+    var badge = '';
+    if (supportOf(x) === 'no') {
+      badge = '<span class="badge transcode" title="A TV listáján nem szerepel ez a formátum">' +
+        x.ext.slice(1).toUpperCase() + '</span>';
+    }
+    if (x.subs && x.subs.length) badge += ' <span class="badge sub" title="Felirat található mellette">CC</span>';
+    html += '<div class="row" data-file="' + esc(x.path) + '">' +
+      '<span class="ico">' + iconOf(x.kind) + '</span>' +
+      '<span class="name">' + esc(x.name) + '</span>' +
+      badge +
+      '<span class="meta">' + fmtSize(x.size) + '</span>' +
+      '<span class="acts"><button data-add="' + esc(x.path) + '" title="Sor végére">+</button></span>' +
+      '</div>';
+  });
+
+  if (!dirs.length && !files.length) {
+    html += '<div class="empty">' + (f ? 'Nincs találat a szűrésre.' :
+      'Ebben a mappában nincs médiafájl.<br>Nyiss meg egy almappát, vagy válts a jobb felső listával.') + '</div>';
+  }
+  $('#browser').innerHTML = html;
+  $('#dirCount').textContent = dirs.length + ' mappa · ' + files.length + ' fájl';
+  $('#btnAddAll').disabled = !files.length;
+}
+
+// =========================================================================
+// Lejátszási sor
+// =========================================================================
+function addItems(items, label) {
+  if (!items || !items.length) { toast('Nem található médiafájl.', 'bad'); return; }
+  var have = {};
+  queue.forEach(function (q) { have[q.path] = 1; });
+  var fresh = items.filter(function (x) { return !have[x.path]; });
+  if (!fresh.length) { toast('Ezek már a sorban vannak.'); return; }
+  queue = queue.concat(fresh);
+  dirty = true;
+  renderQueue();
+  toast(fresh.length + ' elem a sorba' + (label ? ' – ' + label : ''), 'good');
+}
+
+function renderQueue() {
+  persist();
+  var html = queue.map(function (it, i) {
+    var badge = supportOf(it) === 'no'
+      ? '<span class="badge transcode">' + it.ext.slice(1).toUpperCase() + '</span>' : '';
+    if (RESUME[it.path] > 0) {
+      badge += ' <span class="badge resume" title="Innen folytatja">▸ ' +
+        fmtTime(RESUME[it.path]) + '</span>';
+    }
+    return '<div class="row' + (i === current ? ' playing' : '') + '" draggable="true" data-i="' + i + '">' +
+      '<span class="grip">⠿</span>' +
+      '<span class="idx">' + (i + 1) + '</span>' +
+      '<span class="ico">' + iconOf(it.kind) + '</span>' +
+      '<span class="name" title="' + esc(it.path) + '">' + esc(titleOf(it)) + '</span>' +
+      badge +
+      '<span class="acts"><button data-del="' + i + '" title="Törlés a sorból">×</button></span>' +
+      '</div>';
+  }).join('');
+  $('#queue').innerHTML = html || '<div class="empty">A sor üres.<br>Kattints egy fájlra vagy mappára a bal oldalon.</div>';
+  $('#qCount').textContent = queue.length + ' elem';
+  var bytes = queue.reduce(function (a, b) { return a + (b.size || 0); }, 0);
+  $('#qTotal').textContent = bytes ? fmtSize(bytes) : '';
+  $('#btnClear').disabled = !queue.length;
+  $('#btnShuffle').disabled = queue.length < 2;
+  updateSendButton();
+  updateTransport();
+}
+
+function updateSendButton() {
+  var b = $('#btnSend');
+  if (!b) return;
+  if (sending) {           // küldés közben a gomb állapotát nem írjuk felül
+    b.disabled = true;
+    b.className = 'btn primary';
+    b.textContent = 'Küldés…';
+    return;
+  }
+  b.disabled = !queue.length || !TV;
+  b.className = 'btn primary' + (dirty && TV && queue.length ? ' pulse' : '');
+  b.textContent = !TV ? 'Válassz TV-t' : (dirty ? 'Küldés a TV-re' : 'Újraindítás a TV-n');
+}
+
+// =========================================================================
+// Helyi előnézet
+// =========================================================================
+function playLocal(i) {
+  var it = queue[i];
+  if (!it) return;
+  current = i; localMode = true;
+  $('#stage').className = 'on';
+  if (it.kind === 'image') {
+    lv.pause(); lv.removeAttribute('src'); lv.hidden = true;
+    limg.hidden = false; limg.src = localUrl(it);
+  } else {
+    limg.hidden = true; lv.hidden = false;
+    while (lv.firstChild) lv.removeChild(lv.firstChild);
+    lv.src = localUrl(it);
+    if (S.subs && it.subs && it.subs.length) {
+      it.subs.forEach(function (s, k) {
+        var tr = document.createElement('track');
+        tr.kind = 'subtitles'; tr.label = s.name; tr.srclang = s.lang || 'hu';
+        tr.src = localSubUrl(s); if (!k) tr.default = true;
+        lv.appendChild(tr);
+      });
+    }
+    lv.play().catch(function () {});
+  }
+  playingPath = it.path;
+  $('#npTitle').textContent = titleOf(it);
+  $('#npSub').textContent = 'Helyi előnézet (nem a TV-n)';
+  $('#npArt').textContent = iconOf(it.kind);
+  renderQueue();
+}
+function localStop() {
+  if (!localMode) return;
+  localMode = false;
+  playingPath = '';
+  current = -1;
+  $('#stage').className = '';
+  try { lv.pause(); lv.removeAttribute('src'); lv.load(); } catch (e) {}
+  limg.removeAttribute('src');
+  $('#npTitle').textContent = 'Nincs lejátszás alatt';
+  $('#npSub').textContent = 'Tallózz be fájlokat, majd küldd a TV-re';
+  setPlayIcon(false);
+  renderQueue();
+  updateTransport();
+}
+
+lv.addEventListener('timeupdate', function () {
+  if (localMode && !seeking) {
+    $('#seek').max = lv.duration || 100;
+    $('#seek').value = lv.currentTime;
+    $('#seek').disabled = !isFinite(lv.duration);
+    paintRange($('#seek'));
+    $('#tCur').textContent = fmtTime(lv.currentTime);
+    $('#tDur').textContent = isFinite(lv.duration) ? fmtTime(lv.duration) : '–:––';
+  }
+});
+lv.addEventListener('play', function () { if (localMode) setPlayIcon(true); });
+lv.addEventListener('pause', function () { if (localMode) setPlayIcon(false); });
+lv.addEventListener('ended', function () {
+  if (!localMode) return;
+  if (!queue.length) { localStop(); return; }
+  var kov = current + 1;
+  if (kov >= queue.length) {
+    if (S.repeat === 'ALL') kov = 0;
+    else { localStop(); return; }       // "Ismétlés: ki" – itt vége
+  }
+  playLocal(S.repeat === 'SINGLE' ? current : kov);
+});
+lv.addEventListener('error', function () {
+  if (localMode) toast('A böngésző nem tudja lejátszani ezt a formátumot (a TV még viheti).', 'bad');
+});
+
+// =========================================================================
+// Vezérlők
+// =========================================================================
+function setPlayIcon(playing) {
+  $('#playIcon').innerHTML = playing
+    ? '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>'
+    : '<path d="M8 5v14l11-7z"/>';
+}
+function setMuteIcon(muted) {
+  $('#volIcon').innerHTML = muted
+    ? '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="m16 9 4 6M20 9l-4 6" stroke="currentColor" stroke-width="1.8" fill="none"/>'
+    : '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 12a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/>';
+}
+function updateTransport() {
+  var live = localMode || (TV && ST.index >= 0);
+  // A szerver újraindulása után a sor üres, de a TV még játszik: ilyenkor is
+  // legyen mivel megállítani, különben csak új küldéssel lehet leállítani.
+  var megy = !!TV && (ST.state === 'PLAYING' || ST.state === 'PAUSED_PLAYBACK');
+  // Ami TV nélkül és előnézet nélkül úgysem csinálna semmit, azt tiltjuk:
+  // a némán süket gomb rosszabb, mint a letiltott.
+  var vezerelheto = localMode || !!TV;
+  $('#btnPlay').disabled = !(live || (vezerelheto && queue.length));
+  $('#btnStop').disabled = !(live || megy);
+  $('#btnPrev').disabled = !vezerelheto || queue.length < 2;
+  $('#btnNext').disabled = !vezerelheto || queue.length < 2;
+  $('#btnMute').disabled = !vezerelheto;
+  $('#vol').disabled = !vezerelheto;
+}
+
+function togglePlay() {
+  if (localMode) { lv.paused ? lv.play() : lv.pause(); return; }
+  if (TV && ST.index >= 0) { cmd('toggle'); return; }
+  if (queue.length) playIndex(current >= 0 ? current : 0);
+}
+function playIndex(i) {
+  if (!queue[i]) return;
+  if (TV) {
+    if (dirty) sendQueue(i);
+    else cmd('play', { index: i });
+  } else {
+    playLocal(i);
+  }
+}
+
+// =========================================================================
+// Eseménykezelők
+// =========================================================================
+$('#renderer').addEventListener('change', function () {
+  if (this.value) selectRenderer(this.value);
+});
+$('#btnDiscover').addEventListener('click', function () { discover(); });
+
+$('#browser').addEventListener('click', function (e) {
+  // Amíg az új lista meg nem jött, a régi sorok más fájlra mutatnak. Enélkül
+  // egy türelmetlen második kattintás véletlen fájlt tesz a sorba.
+  if (browsing) return;
+  var b = e.target.closest('button');
+  if (b && b.dataset.add) {
+    var f = listing.files.filter(function (x) { return x.path === b.dataset.add; })[0];
+    if (f) addItems([f]);
+    return;
+  }
+  if (b && b.dataset.adddir) { addFolder(b.dataset.adddir); return; }
+  var row = e.target.closest('.row');
+  if (!row) return;
+  if (row.dataset.dir) { browse(row.dataset.dir); $('#filter').value = ''; return; }
+  if (row.dataset.file) {
+    var file = listing.files.filter(function (x) { return x.path === row.dataset.file; })[0];
+    if (file) addItems([file]);
+  }
+});
+
+function addFolder(path) {
+  var name = baseName(path);
+  var ep = S.recursive ? '/api/scan' : '/api/browse';
+  if (S.recursive) toast('Mappa beolvasása…');
+  api(ep, { path: path, hidden: S.hidden ? 1 : 0 }).then(function (d) {
+    if (d.truncated) toast('Sok fájl – csak az első 3000 került be.', 'bad');
+    addItems(d.files, name);
+  }).catch(function (e) { toast(e.message, 'bad'); });
+}
+
+$('#crumbs').addEventListener('click', function (e) {
+  var b = e.target.closest('button');
+  if (b) { $('#filter').value = ''; browse(b.dataset.path); }
+});
+
+$('#queue').addEventListener('click', function (e) {
+  var b = e.target.closest('button');
+  if (b && b.dataset.del !== undefined) {
+    var i = +b.dataset.del;
+    var kivett = queue[i];
+    queue.splice(i, 1);
+    if (localMode && kivett && kivett.path === playingPath) localStop();
+    syncCurrent();
+    dirty = true; renderQueue();
+    return;
+  }
+  var row = e.target.closest('.row');
+  if (row) playIndex(+row.dataset.i);
+});
+
+var dragFrom = -1;
+$('#queue').addEventListener('dragstart', function (e) {
+  var row = e.target.closest('.row'); if (!row) return;
+  dragFrom = +row.dataset.i; row.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', String(dragFrom)); } catch (err) {}
+});
+function ejtesHelye(e, row) {
+  // A sor felső vagy alsó feléhez húztad? Enélkül nem lehet egy sorral lejjebb
+  // tenni valamit, és a lista végére sem lehet bejutni.
+  var r = row.getBoundingClientRect();
+  return (e.clientY - r.top) > r.height / 2 ? 'ala' : 'fole';
+}
+$('#queue').addEventListener('dragover', function (e) {
+  e.preventDefault();
+  var row = e.target.closest('.row'); if (!row) return;
+  Array.prototype.forEach.call($('#queue').children, function (c) {
+    c.classList.remove('over', 'over-below');
+  });
+  row.classList.add(ejtesHelye(e, row) === 'ala' ? 'over-below' : 'over');
+});
+$('#queue').addEventListener('drop', function (e) {
+  e.preventDefault();
+  var row = e.target.closest('.row'); if (!row || dragFrom < 0) return;
+  var cel = +row.dataset.i;
+  var to = cel + (ejtesHelye(e, row) === 'ala' ? 1 : 0);
+  if (to === dragFrom || to === dragFrom + 1) { dragFrom = -1; renderQueue(); return; }
+  var moved = queue.splice(dragFrom, 1)[0];
+  // A kivétel után minden mögötte lévő index eggyel előrébb csúszik.
+  queue.splice(to > dragFrom ? to - 1 : to, 0, moved);
+  syncCurrent();
+  dragFrom = -1; dirty = true; renderQueue();
+});
+$('#queue').addEventListener('dragend', function () {
+  dragFrom = -1;
+  Array.prototype.forEach.call($('#queue').children, function (c) {
+    c.classList.remove('over', 'over-below', 'dragging');
+  });
+});
+
+$('#btnAddAll').addEventListener('click', function () {
+  var f = ($('#filter').value || '').toLowerCase();
+  addItems(listing.files.filter(function (x) { return !f || x.name.toLowerCase().indexOf(f) >= 0; }),
+    baseName(cwd || ''));
+});
+$('#btnClear').addEventListener('click', function () {
+  localStop();
+  queue = []; playingPath = ''; current = -1; dirty = true; renderQueue();
+});
+$('#btnShuffle').addEventListener('click', function () {
+  for (var i = queue.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var t = queue[i]; queue[i] = queue[j]; queue[j] = t;
+  }
+  syncCurrent(); dirty = true; renderQueue();
+  toast('Sor összekeverve');
+});
+$('#btnSend').addEventListener('click', function () {
+  // A `current` a fájl útvonalából jön, tehát átrendezés után is érvényes:
+  // ne dobjuk el azt, amit épp néztél.
+  sendQueue(current >= 0 ? current : 0);
+});
+
+$('#filter').addEventListener('input', renderBrowser);
+$('#recursive').addEventListener('change', function () {
+  S.recursive = this.checked; saveSettings();
+});
+$('#repeat').addEventListener('change', function () {
+  S.repeat = this.value; saveSettings();
+  if (TV) cmd('repeat', { mode: S.repeat });
+});
+$('#shortcuts').addEventListener('change', function () {
+  if (this.value) { $('#filter').value = ''; browse(this.value); }
+  this.value = '';     // maradjon a felirat, hogy ugyanaz újra választható legyen
+});
+
+$('#btnPlay').addEventListener('click', togglePlay);
+$('#btnStop').addEventListener('click', function () {
+  if (localMode) localStop(); else cmd('stop');
+  setPlayIcon(false);
+});
+$('#btnNext').addEventListener('click', function () {
+  if (localMode) playLocal((current + 1) % queue.length);
+  else if (TV) cmd('next');
+});
+$('#btnPrev').addEventListener('click', function () {
+  if (localMode) playLocal((current - 1 + queue.length) % queue.length);
+  else if (TV) cmd('prev');
+});
+$('#btnCloseStage').addEventListener('click', localStop);
+
+$('#seek').addEventListener('input', function () {
+  seeking = true;
+  paintRange(this);
+  $('#tCur').textContent = fmtTime(+this.value);
+});
+$('#seek').addEventListener('change', function () {
+  var v = +this.value;
+  seeking = false;
+  if (localMode) { lv.currentTime = v; }
+  else if (TV) { seekWish = Math.round(v); seekWishAt = Date.now(); cmd('seek', { to: seekWish }); }
+});
+$('#vol').addEventListener('change', function () {
+  var v = +this.value;
+  S.volume = v; saveSettings();
+  if (localMode) lv.volume = v / 100;
+  else if (TV) cmd('volume', { level: Math.round(v) });
+});
+$('#vol').addEventListener('input', function () {
+  paintRange(this);
+  if (localMode) lv.volume = (+this.value) / 100;
+});
+$('#btnMute').addEventListener('click', function () {
+  if (localMode) { lv.muted = !lv.muted; setMuteIcon(lv.muted); }
+  else if (TV) cmd('mute', { on: ST.muted ? 0 : 1 });
+});
+
+$('#btnSettings').addEventListener('click', function () {
+  var s = $('#settings');
+  s.className = s.className === 'on' ? '' : 'on';
+  this.classList.toggle('active');
+});
+$('#setBase').addEventListener('change', function () {
+  S.base = this.value; saveSettings(); dirty = true; updateSendButton();
+});
+$('#setSubs').addEventListener('change', function () {
+  S.subs = this.checked; saveSettings(); dirty = true; updateSendButton();
+});
+$('#setResume').addEventListener('change', function () {
+  S.resume = this.checked; saveSettings(); refreshResume();
+  toast(this.checked ? 'Folytatás bekapcsolva' : 'Folytatás kikapcsolva – minden elölről indul');
+});
+$('#setHidden').addEventListener('change', function () {
+  S.hidden = this.checked; saveSettings(); browse(cwd);
+});
+
+document.addEventListener('keydown', function (e) {
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+  if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+  else if (e.key === 'ArrowRight' && e.shiftKey) { e.preventDefault(); $('#btnNext').click(); }
+  else if (e.key === 'ArrowLeft' && e.shiftKey) { e.preventDefault(); $('#btnPrev').click(); }
+  else if (e.key === 'ArrowRight') {
+    if (localMode) lv.currentTime += 10;
+    else if (TV) { seekWish = Math.round((ST.position || 0) + 10); seekWishAt = Date.now(); cmd('seek', { to: seekWish }); }
+  } else if (e.key === 'ArrowLeft') {
+    if (localMode) lv.currentTime -= 10;
+    else if (TV) { seekWish = Math.max(0, Math.round((ST.position || 0) - 10)); seekWishAt = Date.now(); cmd('seek', { to: seekWish }); }
+  } else if (e.key === '/') { e.preventDefault(); $('#filter').focus(); }
+});
+
+// =========================================================================
+// Indulás
+// =========================================================================
+function boot() {
+  clearLegacyStorage();
+
+  api('/api/state', {}).then(function (st) {
+    stateRev = st.rev || 0;
+    Object.keys(st.settings || {}).forEach(function (k) { S[k] = st.settings[k]; });
+    queue = st.queue || [];
+    cwd = st.cwd || null;
+    var pts = st.positions || {};
+    Object.keys(pts).forEach(function (k) {
+      if (pts[k] && pts[k].pos > 0) RESUME[k] = pts[k].pos;
+    });
+  }).catch(function () {
+    toast('Nem sikerült betölteni a mentett állapotot – alapértelmezéssel indulok.', 'bad');
+  }).then(function () {
+    ready = true;
+    initUi();
+  });
+}
+
+function initUi() {
+  $('#recursive').checked = !!S.recursive;
+  $('#setSubs').checked = S.subs !== false;
+  $('#setResume').checked = S.resume !== false;
+  $('#setHidden').checked = !!S.hidden;
+  $('#repeat').value = S.repeat || 'OFF';
+  var vol = $('#vol');
+  vol.min = 0; vol.max = 100; vol.step = 1;
+  // A 0 itt jellemzően a készülék hibás visszaolvasásából ragadt be, nem szándék.
+  if (!(S.volume > 0)) { S.volume = 30; saveSettings(); }
+  vol.value = S.volume;
+  lv.volume = vol.value / 100;
+  paintRange(vol);
+  paintRange($('#seek'));
+  setMuteIcon(false);
+  renderQueue();
+
+  api('/api/info', {}).then(function (info) {
+    INFO = info;
+    var sel = $('#setBase');
+    var cimek = (info.addresses || []).map(function (ip) {
+      return 'http://' + ip + ':' + info.port;
+    });
+    sel.innerHTML = cimek.length
+      ? cimek.map(function (u) { return '<option value="' + esc(u) + '">' + esc(u) + '</option>'; }).join('')
+      : '<option value="">nincs hálózati cím</option>';
+    // Teljes egyezés kell, nem csak az IP: egy korábbi futás más portja
+    // különben úgy maradna meg, hogy a TV már nem éri el rajta a fájlokat.
+    if (cimek.indexOf(S.base) < 0) S.base = info.mediaBase || cimek[0] || '';
+    sel.value = S.base;
+    saveSettings();
+
+    $('#rootHint').textContent = 'Gyökér: ' + info.root +
+      ' (indításkor a --root kapcsolóval változtatható)';
+    $('#stateHint').textContent = 'Beállítások és sor: ' + (info.stateFile || '–');
+    $('#shortcuts').innerHTML = '<option value="">Ugrás mappára…</option>' +
+      (info.shortcuts || []).map(function (s) {
+        return '<option value="' + esc(s.path) + '">' + esc(s.label) + '</option>';
+      }).join('');
+
+    if (!info.addresses || !info.addresses.length) {
+      banner('Nem található hálózati cím ezen a gépen. A TV így nem éri el a fájlokat.');
+    }
+    return browse(cwd || info.root, info.root);
+  }).catch(function (e) {
+    banner('Nem sikerült kapcsolódni a helyi szerverhez: ' + esc(e.message) +
+      '. Fut még a <code>server.py</code>?');
+  });
+
+  discover();
+  startPolling();
+}
+
+boot();
+})();
+</script>
+</body>
+</html>

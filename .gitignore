@@ -1,0 +1,8 @@
+# Futás közben keletkező állapot: a saját lejátszási sorod és a fájljaid
+# útvonalai vannak benne, nem verziókövetésre való.
+data/
+
+# macOS és Python szemét
+.DS_Store
+__pycache__/
+*.pyc

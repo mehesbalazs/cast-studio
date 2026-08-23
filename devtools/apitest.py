@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+"""A HTTP-réteg önellenőrzése: útvonalak, hibás bemenetek, párhuzamos mentés.
+
+TV nem kell hozzá, és a saját beállításaidhoz sem nyúl: a szervert külön
+állapotmappával indítja (--data), ideiglenes gyökérrel.
+
+Használat:
+    python3 devtools/apitest.py
+"""
+
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+# Az app egy szinttel feljebb van: ez a mappa csak a fejlesztői eszközöké.
+APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PORT = 8479
+OK, BAD = [], []
+
+
+def say(ok, label, detail=''):
+    (OK if ok else BAD).append(label)
+    print('  [%s] %-46s %s' % ('OK ' if ok else 'HIBA', label, detail))
+
+
+def req(path, body=None, timeout=20):
+    url = 'http://127.0.0.1:%d%s' % (PORT, path)
+    r = urllib.request.Request(
+        url, data=json.dumps(body).encode() if body is not None else None,
+        headers={'Content-Type': 'application/json'} if body is not None else {})
+    try:
+        with urllib.request.urlopen(r, timeout=timeout) as x:
+            return x.status, x.read().decode('utf-8', 'replace')
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode('utf-8', 'replace')
+    except Exception as e:
+        return 0, str(e)
+
+
+def nyers(kérés, timeout=5):
+    """Nyers bájtok a socketre - a hibás kérés-sorok próbájához."""
+    s = socket.create_connection(('127.0.0.1', PORT), 5)
+    s.settimeout(timeout)
+    s.sendall(kérés)
+    data = b''
+    try:
+        while True:
+            c = s.recv(4096)
+            if not c:
+                break
+            data += c
+    except socket.timeout:
+        pass
+    s.close()
+    return data
+
+
+def main():
+    root = tempfile.mkdtemp()
+    adat = tempfile.mkdtemp()
+    with open(os.path.join(root, 'ok.mp4'), 'wb') as fh:
+        fh.write(b'x' * 5000)
+    tilos = os.path.join(root, 'tilos.mp4')
+    with open(tilos, 'wb') as fh:
+        fh.write(b'y' * 4096)
+    os.chmod(tilos, 0)
+    ures = os.path.join(root, 'ures.mp4')
+    open(ures, 'wb').close()
+
+    print('\n  A HTTP-réteg önellenőrzése (TV nélkül)\n')
+    srv = subprocess.Popen(
+        [sys.executable, '-u', os.path.join(APP, 'server.py'),
+         '--root', root, '--port', str(PORT), '--no-token', '--no-open',
+         '--verbose', '--data', adat],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    try:
+        time.sleep(2.5)
+        say(req('/api/info')[0] == 200, 'a szerver válaszol')
+
+        q = urllib.parse.quote
+        # -- fájlkiszolgálás -------------------------------------------
+        say(req('/api/media?path=' + q(tilos, safe=''))[0] == 404,
+            'olvashatatlan fájl 404, nem üres 200')
+        c, _ = req('/api/media?path=' + q(ures, safe=''))
+        say(c == 200, 'nulla bájtos fájl kiszolgálható', 'HTTP %s' % c)
+        say(req('/api/media?path=' + q('/etc/passwd', safe=''))[0] == 404,
+            'gyökéren kívülre nem enged')
+        say(req('/')[0] == 200 and req('/index.html')[0] == 200,
+            'a felület kiszolgálható')
+
+        # -- hibás bemenetek: 4xx, ne 500 ------------------------------
+        rossz = [('tömb törzs', '/api/dlna/queue', [1, 2, 3]),
+                 ('szöveg törzs', '/api/dlna/queue', 'nem objektum'),
+                 ('items nem lista', '/api/dlna/queue', {'items': 'x'}),
+                 ('szemét elemek', '/api/dlna/queue', {'items': [None, 1, 'x']}),
+                 ('rossz subs', '/api/dlna/queue',
+                  {'items': [{'path': os.path.join(root, 'ok.mp4'), 'subs': [7]}]})]
+        baj = [n for n, u, b in rossz if req(u, b)[0] >= 500]
+        say(not baj, 'hibás lejátszási sor nem szerverhiba', ', '.join(baj) or 'mind 4xx')
+
+        szamok = ['/api/dlna/volume?level=inf', '/api/dlna/volume?level=1e400',
+                  '/api/dlna/volume?level=abc', '/api/dlna/seek?to=nan',
+                  '/api/dlna/seek?to=inf', '/api/dlna/seek?to=-5',
+                  '/api/dlna/play?index=999999']
+        baj = [u for u in szamok if req(u)[0] >= 500]
+        say(not baj, 'képtelen számértékek nem szerverhibák', ', '.join(baj) or 'mind 4xx')
+
+        # -- hibás kérés-sor ne öljön kapcsolatot ----------------------
+        for probe in (b'SZEMET\r\n\r\n', b'GET / HTTP/9.9\r\n\r\n'):
+            nyers(probe)
+        say(req('/api/info')[0] == 200, 'hibás kérés után is kiszolgál')
+
+        d = nyers(b'POST /api/state HTTP/1.1\r\nHost: x\r\n'
+                  b'Transfer-Encoding: chunked\r\n\r\n1a\r\n'
+                  b'{"settings":{"volume":99}}\r\n0\r\n\r\n')
+        say(b'411' in d, 'darabolt törzset nem nyel el némán', d[:24].decode('latin1'))
+
+        # -- állapot: párhuzamos mentés ne vesszen el ------------------
+        req('/api/state', {'queue': [{'path': '/x/%d.mkv' % i} for i in range(16)]})
+        hiba = []
+
+        def ir(i):
+            c, _ = req('/api/state',
+                       {'positions': {'p%02d' % i: {'pos': i + 30, 'dur': 100, 'at': i}}})
+            if c != 200:
+                hiba.append(c)
+
+        szalak = [threading.Thread(target=ir, args=(i,)) for i in range(25)]
+        for t in szalak:
+            t.start()
+        for t in szalak:
+            t.join(timeout=30)
+        st = json.loads(req('/api/state')[1])
+        say(len(st['positions']) == 25 and not hiba,
+            'párhuzamos mentésből semmi nem vész el',
+            '%d / 25' % len(st['positions']))
+        say(len(st['queue']) == 16, 'a lejátszási sor sértetlen marad')
+
+        # -- hibás tartalom ne bénítsa meg a mentést -------------------
+        req('/api/state', {'positions': {'x%03d' % i: i for i in range(510)}})
+        c, b = req('/api/state', {'positions': {'jó': {'pos': 40, 'dur': 100, 'at': 1}}})
+        say(c == 200 and '"jó"' in b, 'hibás pozícióérték után is ment', 'HTTP %s' % c)
+
+        req('/api/state', {'settings': {'sz%d' % i: i for i in range(400)}})
+        n = len(json.loads(req('/api/state')[1])['settings'])
+        say(n <= 12, 'ismeretlen beállításkulcsok nem ragadnak be', '%d kulcs' % n)
+
+        # -- két megnyitott lap ne írja felül egymást -------------------
+        st = json.loads(req('/api/state')[1])
+        rev = st.get('rev', 0)
+        c1, _ = req('/api/state', {'rev': rev, 'queue': [{'path': '/a.mkv'}]})
+        c2, b2 = req('/api/state', {'rev': rev, 'queue': [{'path': '/b.mkv'}]})
+        say(c1 == 200 and c2 == 409,
+            'elavult revízióval nem lehet felülírni a sort',
+            'első %s, második %s' % (c1, c2))
+        mostani = json.loads(req('/api/state')[1])
+        say(len(mostani['queue']) == 1 and mostani['queue'][0]['path'] == '/a.mkv',
+            'az elsőként mentett sor marad érvényben')
+
+        elozo = mostani['rev']
+        req('/api/state', {'positions': {'q': {'pos': 50, 'dur': 100, 'at': 2}}})
+        say(json.loads(req('/api/state')[1])['rev'] == elozo,
+            'a pozíciómentés nem avítja el a lapok revízióját')
+
+        # -- eltűnő mappa ----------------------------------------------
+        el = os.path.join(root, 'eltunik')
+        os.makedirs(el, exist_ok=True)
+        shutil.rmtree(el)
+        say(req('/api/browse?path=' + q(el, safe=''))[0] == 404,
+            'eltűnt mappa 404, nem 500')
+    finally:
+        srv.terminate()
+        try:
+            napló = srv.communicate(timeout=10)[0].decode('utf-8', 'replace')
+        except subprocess.TimeoutExpired:
+            srv.kill()
+            napló = ''
+        os.chmod(tilos, 0o644)
+        shutil.rmtree(root, ignore_errors=True)
+        shutil.rmtree(adat, ignore_errors=True)
+
+    say('Traceback' not in napló, 'egyetlen kivétel sem szállt el a naplóba')
+    print('\n  %d rendben, %d hiba\n' % (len(OK), len(BAD)))
+    if BAD:
+        print('  megbukott: %s\n' % ', '.join(BAD))
+    return 1 if BAD else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
