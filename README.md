@@ -388,12 +388,21 @@ kapcsoltak be – feloldáskor megpróbálja megszüntetni (`SetMute 0`). Ha a
 készülék erre sem reagál, **kiírja**, hogy a némítás csak a távirányítóval
 szüntethető meg, ahelyett hogy csendben a hangerőt állítgatná tovább.
 
-A csúszka némítás alatt nullát mutat – ez nem hiba, hanem az igazság. A hangerő
-kézi állítása egyben feloldja a némítást.
+A csúszka némítás alatt nullát mutat – ez nem hiba, hanem az igazság. A
+nullánál nagyobb hangerő beállítása magától feloldja az app saját némítását,
+egyetlen kérésből – a készülék némítását viszont nem, tehát ha az áll, a
+felület továbbra is jogosan mutat némítást.
 
 A `muted` mező csak azt jelenti, amit a készülék némításnak vall, illetve amit
 az app maga kapcsolt be. A nulla hangerő önmagában **nem** számít némításnak:
 ha annak vennénk, a feloldás gomb olyat ígérne, amit nem tud teljesíteni.
+Fordítva viszont igaz: ha a készülék némítását nem sikerült feloldani, az app
+**továbbra is némítottnak mutatja magát**, mert a hang tényleg nincs meg.
+
+Az app megjegyzi, hogy a némítás tőle származik-e. Ez három dolgot old meg:
+egy ismételt némítás nem írja felül a már elmentett hangerőt a nullával;
+ugyanannak a készüléknek az újraválasztása nem felejti el a saját némításunkat;
+és egy idegen eredetű némítás feloldásakor nem nyúlunk a hangerőhöz.
 
 ### Hangerő-visszaolvasás
 
@@ -514,7 +523,7 @@ A `devtools/` mappában négy eszköz van; az app működéséhez egyik sem kell
 mappa törölhető. Részletek: [`devtools/README.md`](devtools/README.md).
 
 ```bash
-python3 devtools/logictest.py          # 28 ellenőrzés, TV nélkül
+python3 devtools/logictest.py          # 33 ellenőrzés, TV nélkül
 python3 devtools/apitest.py            # 18 ellenőrzés, TV nélkül
 python3 devtools/faketv.py --port 8475 # hamis DLNA-készülék a hálózatra
 python3 devtools/selftest.py <mappa>   # 16 ellenőrzés valódi készülékkel

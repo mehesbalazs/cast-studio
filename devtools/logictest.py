@@ -431,6 +431,64 @@ def main():
         'a feloldás pontosan az eredeti hangerőt adja vissza',
         ' '.join('%d→0→%d' % (k, v) for k, _, v in jo))
 
+    # Kétszer némítva a második ne a már nullázott értéket mentse el.
+    p = player(Store())
+    p.tv_volume = 37
+    p.select(dict(p.renderer))
+    p.set_mute(True)
+    p.set_mute(True)
+    p.set_mute(False)
+    vissza = p.tv_volume
+    p.shutdown()
+    say(vissza == 37, 'ismételt némítás nem felejti el az eredeti hangerőt',
+        'feloldva=%d (eredeti 37)' % vissza)
+
+    # Ugyanannak a készüléknek az újraválasztása ne felejtse el a némításunkat.
+    p = player(Store())
+    p.tv_volume = 28
+    p.select(dict(p.renderer))
+    p.set_mute(True)
+    p.select(dict(p.renderer))          # ugyanaz az eszköz még egyszer
+    megvan = p.snapshot()['muted']
+    p.set_mute(False)
+    vissza = p.tv_volume
+    p.shutdown()
+    say(megvan and vissza == 28, 'újraválasztás után is tudja, hogy mi némítottunk',
+        'muted=%s feloldva=%d (eredeti 28)' % (megvan, vissza))
+
+    # Feloldhatatlan készülék-némításnál ne mutassuk feloldottnak.
+    p = player(Store(), mute_stuck=True)
+    p.tv_muted = True
+    p.select(dict(p.renderer))
+    p.set_mute(False)
+    p.shutdown()
+    say(p.snapshot()['muted'] is True,
+        'ha a némítás bent maradt, nem mutatja feloldottnak',
+        'muted=%s' % p.snapshot()['muted'])
+
+    # A hangerő állítása feloldja a saját némításunkat, egy kérésből.
+    p = player(Store())
+    p.tv_volume = 40
+    p.select(dict(p.renderer))
+    p.set_mute(True)
+    p.set_volume(15)
+    allapot = p.snapshot()
+    p.shutdown()
+    say(allapot['muted'] is False and p.tv_volume == 15,
+        'a hangerő állítása feloldja a némítást',
+        'muted=%s hangerő=%d' % (allapot['muted'], p.tv_volume))
+
+    # A készülék saját némítását viszont NEM oldja fel, tehát nem is hazudik.
+    p = player(Store(), mute_stuck=True)
+    p.tv_muted = True
+    p.select(dict(p.renderer))
+    p.set_volume(15)
+    allapot = p.snapshot()
+    p.shutdown()
+    say(allapot['muted'] is True,
+        'idegen némítást a hangerő állítása nem tüntet el',
+        'muted=%s' % allapot['muted'])
+
     # Beragadós készülék: a némítást bekapcsolni tudja, kikapcsolni nem.
     p = player(Store(), mute_stuck=True)
     p.tv_muted = True                    # a távirányítóról már némítva van

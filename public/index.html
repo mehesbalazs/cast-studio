@@ -1335,10 +1335,8 @@ $('#vol').addEventListener('change', function () {
   S.volume = v; saveSettings();
   if (localMode) { lv.volume = v / 100; return; }
   if (!TV) return;
-  // Ha némítva volt, és most hangerőt állítasz, az egyben feloldás is.
-  if (ST.muted && v > 0) { cmd('mute', { on: 0 }).then(function () {
-    cmd('volume', { level: Math.round(v) });
-  }); return; }
+  // A nullánál nagyobb hangerő magától feloldja a némítást - ezt a szerver
+  // intézi. Két külön kérés helyett így nem ugrik meg közben a csúszka.
   cmd('volume', { level: Math.round(v) });
 });
 $('#vol').addEventListener('input', function () {
@@ -1414,9 +1412,9 @@ function initUi() {
   $('#repeat').value = S.repeat || 'OFF';
   var vol = $('#vol');
   vol.min = 0; vol.max = 100; vol.step = 1;
-  // A 0 itt jellemzően a készülék hibás visszaolvasásából ragadt be, nem szándék.
-  if (!(S.volume > 0)) { S.volume = 30; saveSettings(); }
-  vol.value = S.volume;
+  // Amíg a készülék állapota meg nem érkezik, a legutóbb mentett értéket
+  // mutatjuk - kitalált alapérték nélkül, akkor is, ha az nulla volt.
+  vol.value = S.volume || 0;
   lv.volume = vol.value / 100;
   paintRange(vol);
   paintRange($('#seek'));
