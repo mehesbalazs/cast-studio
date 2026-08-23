@@ -34,7 +34,7 @@ class MockTV(dlna.Player):
     """Hisense-szerű készülék: a hosszt nem jelenti, és szeszélyesen teker."""
 
     def __init__(self, seek_lockout=0.0, seek_ignored=False, duration=2713.0,
-                 seek_fail_first=0):
+                 seek_fail_first=0, mute_broken=False):
         dlna.Player.__init__(self)
         self.renderer = {'avtransport': 'mock://avt', 'rendering': 'mock://rcs',
                          'name': 'MockTV', 'udn': 'uuid:mock',
@@ -49,6 +49,9 @@ class MockTV(dlna.Player):
         self.restart_at = 0.0                # ennél a pozíciónál ugrik vissza 0-ra
         self.seeks = []
         self.tv_uri = ''
+        self.tv_volume = 22
+        self.tv_muted = False
+        self.mute_broken = mute_broken
         self.tvlock = threading.Lock()
 
     def tick(self):
@@ -117,7 +120,23 @@ class MockTV(dlna.Player):
         return True, '', ''
 
     def _rcs(self, action, args=None):
-        return True, '<CurrentVolume>0</CurrentVolume><CurrentMute>0</CurrentMute>'
+        a = dict(list(args or []))
+        with self.tvlock:
+            if action == 'SetVolume':
+                self.tv_volume = int(a.get('DesiredVolume', 0))
+                return True, ''
+            if action == 'SetMute':
+                # A romlott készülék elfogadja, de nem hajtja végre.
+                if not self.mute_broken:
+                    self.tv_muted = a.get('DesiredMute') in (1, '1', 'true')
+                return True, ''
+            if action == 'GetVolume':
+                return True, '<CurrentVolume>%d</CurrentVolume>' % self.tv_volume
+            if action == 'GetMute':
+                # Beégetett "némítva" válasz - pontosan ez a mért hiba.
+                m = 1 if (self.mute_broken or self.tv_muted) else 0
+                return True, '<CurrentMute>%d</CurrentMute>' % m
+        return True, ''
 
     def _poll_loop(self):
         """Ugyanaz a _poll_once, csak a gyorsított órához igazított ütemben."""
@@ -360,6 +379,38 @@ def main():
     egyseg = p.seek_unit
     p.shutdown()
     say(egyseg == 'REL_TIME', 'a bevált egységet megjegyzi', str(egyseg))
+
+    print('\n  Némítás')
+    p = player(Store())
+    p.select(dict(p.renderer))
+    p.set_mute(True)
+    n_hangero, n_allapot = p.tv_volume, p.tv_muted
+    p.set_mute(False)
+    p.shutdown()
+    say(n_allapot and not p.tv_muted and n_hangero == 22,
+        'szabályos készüléken a hangerőhöz nem nyúl',
+        'némítva: hangerő=%d, készülék némítva=%s' % (n_hangero, n_allapot))
+
+    p = player(Store(), mute_broken=True)   # SetMute elfogadva, de hatástalan
+    p.select(dict(p.renderer))
+    kezdo = p.tv_volume
+    p.set_mute(True)
+    nemitva = (p.tv_volume, p.snapshot()['muted'])
+    p.set_mute(False)
+    feloldva = (p.tv_volume, p.snapshot()['muted'])
+    p.shutdown()
+    say(nemitva == (0, True), 'romlott némításnál a hangerőn keresztül némít',
+        'hangerő=%d muted=%s' % nemitva)
+    say(feloldva == (kezdo, False), 'feloldáskor visszaáll az eredeti hangerő',
+        'hangerő=%d (eredeti %d) muted=%s' % (feloldva[0], kezdo, feloldva[1]))
+
+    p = player(Store(), mute_broken=True)
+    p.select(dict(p.renderer))
+    p.shutdown()
+    say(p.snapshot()['muted'] is False and p.mute_readback is False,
+        'a beégetett "némítva" válasz nem téveszti meg',
+        'muted=%s, visszaolvasás megbízható=%s'
+        % (p.snapshot()['muted'], p.mute_readback))
 
     print('\n  Hétköznapi utak')
     st = Store()

@@ -192,6 +192,7 @@ def soap(control_url, service, action, args=None, timeout=8.0, with_code=False):
 MAX_LOCATIONS = 32     # egy bőbeszédű vagy rosszindulatú válaszoló ne húzza el
 SELECT_BUDGET = 12.0   # ennyi idő alatt végezzen a készülék kikérdezése
 ERROR_TTL = 6.0        # ennyi ideig kérhető le ugyanaz az üzenet
+MUTE_FALLBACK = 30     # ha némításkor nem tudjuk, mennyi volt a hangerő
 
 
 def _sajat_cim(location, forras_ip):
@@ -401,6 +402,11 @@ class Player(object):
         self.duration = 0.0
         self.volume = 50
         self.muted = False
+        # Van készülék, amelyik a SetMute-ot elfogadja, de nem hajtja végre, és
+        # a GetMute-ra mindig "némítva" választ ad. Ilyenkor a hangerőn
+        # keresztül némítunk, mert az nála is pontosan működik.
+        self.mute_readback = True    # megbízható-e a készülék némítás-válasza
+        self.volume_before_mute = 0  # ide állítjuk vissza feloldáskor
         self.error = ''
         self.error_id = 0            # hogy két megnyitott lap ne egye el egymás elől
         self.error_at = 0.0
@@ -448,6 +454,8 @@ class Player(object):
                 self.stopped_by_user = True
                 self.resume_to = 0.0
                 self.last_pos = 0.0
+                self.mute_readback = True     # az új készüléknél újratanuljuk
+                self.muted = False
             self.renderer = renderer
             self.mimes = []
             self.seek_modes = []
@@ -791,27 +799,70 @@ class Player(object):
         return ok, resp
 
     def set_mute(self, on):
+        on = bool(on)
+        with self.lock:
+            hasznalhato = self.mute_readback
         ok, resp = self._rcs('SetMute', [('Channel', 'Master'),
                                          ('DesiredMute', 1 if on else 0)])
+        if not ok and hasznalhato:
+            return False, resp
+
+        if hasznalhato:
+            # Nem elég elküldeni: ellenőrizzük, hogy tényleg megtörtént-e.
+            ok2, body = self._rcs('GetMute', [('Channel', 'Master')])
+            jelentett = (_tag(body, 'CurrentMute') in ('1', 'true')) if ok2 else None
+            if jelentett is not None and jelentett != on:
+                with self.lock:
+                    self.mute_readback = False
+                hasznalhato = False
+
+        if not hasznalhato:
+            ok, resp = self._mute_hangeroval(on)
+            if not ok:
+                return False, resp
+
+        with self.lock:
+            self.muted = on
+        return True, ''
+
+    def _mute_hangeroval(self, on):
+        """Némítás a hangerőn keresztül - ott, ahol a SetMute nem működik."""
+        with self.lock:
+            if on:
+                self.volume_before_mute = (self.volume if self.volume > 0
+                                           else MUTE_FALLBACK)
+                cel = 0
+            else:
+                cel = self.volume_before_mute or MUTE_FALLBACK
+        ok, resp = self._rcs('SetVolume', [('Channel', 'Master'),
+                                           ('DesiredVolume', cel)])
         if ok:
             with self.lock:
-                self.muted = bool(on)
+                self.volume = cel
         return ok, resp
 
     def _read_volume(self):
-        # Több készülék a SetVolume-ot elfogadja, de utána mindig 0-t jelent.
-        # A 0-t ezért "nem tudom"-ként kezeljük, és megtartjuk a saját értékünket.
         ok, body = self._rcs('GetVolume', [('Channel', 'Master')])
         if ok:
             try:
                 reported = int(_tag(body, 'CurrentVolume') or 0)
-                if reported > 0:
-                    self.volume = reported
             except ValueError:
-                pass
+                reported = -1
+            if 0 <= reported <= 100:
+                with self.lock:
+                    self.volume = reported
+
         ok, body = self._rcs('GetMute', [('Channel', 'Master')])
-        if ok:
-            self.muted = _tag(body, 'CurrentMute') in ('1', 'true')
+        if not ok:
+            return
+        jelentett = _tag(body, 'CurrentMute') in ('1', 'true')
+        with self.lock:
+            if jelentett and self.volume > 0 and not self.muted:
+                # Némítottnak vallja magát, közben hangja is van, és mi nem
+                # némítottuk: a válasza nem használható semmire.
+                self.mute_readback = False
+            elif self.mute_readback:
+                self.muted = jelentett
 
     # -- állapotfigyelés -------------------------------------------------
     def _poll_loop(self):
@@ -1002,6 +1053,7 @@ class Player(object):
                 'duration': round(veges(self.duration), 1),
                 'volume': self.volume,
                 'muted': self.muted,
+                'muteReadback': self.mute_readback,
                 'repeat': self.repeat,
                 'seekUnit': self.seek_unit,
                 'queueLength': len(self.queue),

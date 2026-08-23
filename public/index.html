@@ -769,12 +769,10 @@ function applyState(st, seq) {
     $('#tDur').textContent = dur > 0 ? fmtTime(dur) : '–:––';
     setPlayIcon(ST.state === 'PLAYING');
 
-    // Több készülék (köztük ez a Hisense) mindig 0-t jelent vissza hangerőnek.
-    // Ilyenkor a saját, ismert értékünket mutatjuk, ne ugorjon a csúszka nullára.
+    // A hangerő azt mutassa, ami a készüléken van. Némításkor ez nulla lehet:
+    // van olyan TV, amelyiken a némítás csak a hangerőn keresztül végezhető el.
     if (typeof ST.volume === 'number' && document.activeElement !== $('#vol')) {
-      if (ST.volume > 0 || !(S.volume > 0)) {
-        $('#vol').value = ST.volume;
-      }
+      $('#vol').value = ST.volume;
       paintRange($('#vol'));
     }
     setMuteIcon(!!ST.muted);
@@ -1135,6 +1133,8 @@ function setPlayIcon(playing) {
     : '<path d="M8 5v14l11-7z"/>';
 }
 function setMuteIcon(muted) {
+  var b = $('#btnMute');
+  if (b) b.title = muted ? 'Némítás feloldása' : 'Némítás';
   $('#volIcon').innerHTML = muted
     ? '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="m16 9 4 6M20 9l-4 6" stroke="currentColor" stroke-width="1.8" fill="none"/>'
     : '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 12a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/>';
@@ -1333,8 +1333,13 @@ $('#seek').addEventListener('change', function () {
 $('#vol').addEventListener('change', function () {
   var v = +this.value;
   S.volume = v; saveSettings();
-  if (localMode) lv.volume = v / 100;
-  else if (TV) cmd('volume', { level: Math.round(v) });
+  if (localMode) { lv.volume = v / 100; return; }
+  if (!TV) return;
+  // Ha némítva volt, és most hangerőt állítasz, az egyben feloldás is.
+  if (ST.muted && v > 0) { cmd('mute', { on: 0 }).then(function () {
+    cmd('volume', { level: Math.round(v) });
+  }); return; }
+  cmd('volume', { level: Math.round(v) });
 });
 $('#vol').addEventListener('input', function () {
   paintRange(this);

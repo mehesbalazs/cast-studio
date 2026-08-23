@@ -173,7 +173,26 @@ def main():
         say(still >= saved - 40, 'a mentett pontot nem írja felül a folytatás',
             '%.0f mp (mentett volt: %.0f)' % (still, saved))
 
-        # 7. másik elemre váltva marad-e meg az elhagyott elem pontja
+        # 7. némítás: a készülék válaszának hinni nem elég, mérni kell
+        api('/api/dlna/volume?level=22')
+        time.sleep(2)
+        elotte = state().get('volume', -1)
+        api('/api/dlna/mute?on=1')
+        time.sleep(2)
+        kozben = state()
+        say(kozben.get('muted') is True and kozben.get('volume') == 0
+            or (kozben.get('muted') is True and kozben.get('muteReadback')),
+            'némítás megtörténik', 'muted=%s hangerő=%s'
+            % (kozben.get('muted'), kozben.get('volume')))
+        api('/api/dlna/mute?on=0')
+        time.sleep(2)
+        utana = state()
+        say(utana.get('muted') is False and utana.get('volume') == elotte,
+            'feloldás visszaadja az eredeti hangerőt',
+            'muted=%s hangerő=%s (előtte %s)'
+            % (utana.get('muted'), utana.get('volume'), elotte))
+
+        # 8. másik elemre váltva marad-e meg az elhagyott elem pontja
         others = [m for m in pick_media(folder, 3) if m != media]
         if others:
             two = {'items': [{'path': media, 'title': 'egyes'},
