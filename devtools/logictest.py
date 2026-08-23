@@ -403,6 +403,34 @@ def main():
         'a készülék némítását SOHA nem kapcsolja be',
         'kiküldött SetMute kérések: %s' % (kertek or 'egy sem'))
 
+    # Nulláról indulva a feloldás ne találjon ki hangerőt.
+    p = player(Store())
+    p.tv_volume = 0
+    p.select(dict(p.renderer))
+    p.set_mute(True)
+    nemitva = p.tv_volume
+    p.set_mute(False)
+    feloldva = p.tv_volume
+    p.shutdown()
+    say(nemitva == 0 and feloldva == 0,
+        'nulla hangerőről a feloldás sem emeli meg',
+        'némítva=%d feloldva=%d' % (nemitva, feloldva))
+
+    # Bármilyen kiindulásból pontos oda-vissza.
+    jo = []
+    for kezdo in (5, 17, 44, 100):
+        p = player(Store())
+        p.tv_volume = kezdo
+        p.select(dict(p.renderer))
+        p.set_mute(True)
+        n = p.tv_volume
+        p.set_mute(False)
+        jo.append((kezdo, n, p.tv_volume))
+        p.shutdown()
+    say(all(n == 0 and vissza == k for k, n, vissza in jo),
+        'a feloldás pontosan az eredeti hangerőt adja vissza',
+        ' '.join('%d→0→%d' % (k, v) for k, _, v in jo))
+
     # Beragadós készülék: a némítást bekapcsolni tudja, kikapcsolni nem.
     p = player(Store(), mute_stuck=True)
     p.tv_muted = True                    # a távirányítóról már némítva van
@@ -413,9 +441,9 @@ def main():
     hangero = p.tv_volume
     p.shutdown()
     say(nemitottnak_latja, 'felismeri a készüléken már beállított némítást')
-    say(hangero > 0 and 'távirányító' in uzenet,
-        'feloldhatatlan némításnál szól a felhasználónak',
-        (uzenet or 'NINCS ÜZENET')[:52])
+    say(hangero == 22 and 'távirányító' in uzenet,
+        'feloldhatatlan némításnál szól, és a hangerőhöz nem nyúl',
+        'hangerő=%d, üzenet: %s' % (hangero, (uzenet or 'NINCS')[:40]))
 
     print('\n  Hétköznapi utak')
     st = Store()

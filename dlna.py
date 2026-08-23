@@ -192,7 +192,6 @@ def soap(control_url, service, action, args=None, timeout=8.0, with_code=False):
 MAX_LOCATIONS = 32     # egy bőbeszédű vagy rosszindulatú válaszoló ne húzza el
 SELECT_BUDGET = 12.0   # ennyi idő alatt végezzen a készülék kikérdezése
 ERROR_TTL = 6.0        # ennyi ideig kérhető le ugyanaz az üzenet
-MUTE_FALLBACK = 30     # ha némításkor nem tudjuk, mennyi volt a hangerő
 
 
 def _sajat_cim(location, forras_ip):
@@ -403,6 +402,7 @@ class Player(object):
         self.volume = 50
         self.muted = False
         self.volume_before_mute = 0  # ide állítjuk vissza feloldáskor
+        self.muted_by_us = False     # mi némítottunk-e, vagy a készüléken volt
         self.error = ''
         self.error_id = 0            # hogy két megnyitott lap ne egye el egymás elől
         self.error_at = 0.0
@@ -451,6 +451,7 @@ class Player(object):
                 self.resume_to = 0.0
                 self.last_pos = 0.0
                 self.muted = False
+                self.muted_by_us = False
             self.renderer = renderer
             self.mimes = []
             self.seek_modes = []
@@ -838,14 +839,24 @@ class Player(object):
         return bool(ok) and _tag(body, 'CurrentMute') in ('1', 'true')
 
     def _mute_hangeroval(self, on):
-        """Némítás a hangerőn keresztül - ott, ahol a SetMute nem működik."""
+        """Némítás a hangerőn keresztül.
+
+        A feloldás pontosan azt adja vissza, ami a némítás előtt volt - akkor
+        is, ha az nulla volt. Kitalált alapértékkel a hangerő a semmiből
+        ugrana fel, ami a felhasználónak megmagyarázhatatlan.
+        """
         with self.lock:
             if on:
-                self.volume_before_mute = (self.volume if self.volume > 0
-                                           else MUTE_FALLBACK)
+                self.volume_before_mute = self.volume
+                self.muted_by_us = True
                 cel = 0
+            elif not self.muted_by_us:
+                # A némítás nem tőlünk származik (távirányító, másik program):
+                # nincs mit visszaadni, és a hangerőhöz nem nyúlunk hozzá.
+                return True, ''
             else:
-                cel = self.volume_before_mute or MUTE_FALLBACK
+                self.muted_by_us = False
+                cel = self.volume_before_mute
         ok, resp = self._rcs('SetVolume', [('Channel', 'Master'),
                                            ('DesiredVolume', cel)])
         if ok:
@@ -864,11 +875,12 @@ class Player(object):
                 with self.lock:
                     self.volume = reported
 
-        # Némának számít, ha a készülék annak vallja magát, vagy ha nincs
-        # hangereje: a felhasználó szempontjából a kettő ugyanaz.
-        jelentett = self._nemitva_jelent()
+        # Csak azt tekintjük némításnak, amit a készülék annak vall. A nulla
+        # hangerő nem az: ha annak vennénk, a feloldás gomb olyasmit ígérne,
+        # amit nem tud teljesíteni - nincs mit visszaadni.
+        jelentett = self._nemitva_jelent()      # hálózati hívás: zár nélkül
         with self.lock:
-            self.muted = jelentett or self.volume <= 0
+            self.muted = jelentett
 
     # -- állapotfigyelés -------------------------------------------------
     def _poll_loop(self):
