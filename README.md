@@ -371,8 +371,10 @@ Ebből egy szabály következik, ami nem csak a némításra igaz:
 
 Ezért az app **soha nem kapcsolja be a készülék némítását.** A némítás a
 hangerőn keresztül történik: elmenti az aktuális hangerőt, nullára állítja,
-feloldáskor visszaadja. Ez minden készüléken működik, visszaolvasható, és nem
-tud beragadni.
+feloldáskor visszaadja. Ez visszaolvasható, ellenőrizhető, és nem tud
+beragadni. (Ha a készülék egyáltalán nem hirdet `RenderingControl`
+szolgáltatást, sem a hangerő, sem a némítás nem érhető el rajta – ilyenkor az
+app ezt megmondja, ahelyett hogy úgy tenne, mintha sikerült volna.)
 
 A visszaadás **pontos, és soha nem talál ki értéket**:
 
