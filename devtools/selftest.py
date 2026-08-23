@@ -180,8 +180,7 @@ def main():
         api('/api/dlna/mute?on=1')
         time.sleep(2)
         kozben = state()
-        say(kozben.get('muted') is True and kozben.get('volume') == 0
-            or (kozben.get('muted') is True and kozben.get('muteReadback')),
+        say(kozben.get('muted') is True and kozben.get('volume') == 0,
             'némítás megtörténik', 'muted=%s hangerő=%s'
             % (kozben.get('muted'), kozben.get('volume')))
         api('/api/dlna/mute?on=0')

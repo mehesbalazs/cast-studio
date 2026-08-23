@@ -402,10 +402,6 @@ class Player(object):
         self.duration = 0.0
         self.volume = 50
         self.muted = False
-        # Van készülék, amelyik a SetMute-ot elfogadja, de nem hajtja végre, és
-        # a GetMute-ra mindig "némítva" választ ad. Ilyenkor a hangerőn
-        # keresztül némítunk, mert az nála is pontosan működik.
-        self.mute_readback = True    # megbízható-e a készülék némítás-válasza
         self.volume_before_mute = 0  # ide állítjuk vissza feloldáskor
         self.error = ''
         self.error_id = 0            # hogy két megnyitott lap ne egye el egymás elől
@@ -454,7 +450,6 @@ class Player(object):
                 self.stopped_by_user = True
                 self.resume_to = 0.0
                 self.last_pos = 0.0
-                self.mute_readback = True     # az új készüléknél újratanuljuk
                 self.muted = False
             self.renderer = renderer
             self.mimes = []
@@ -799,31 +794,48 @@ class Player(object):
         return ok, resp
 
     def set_mute(self, on):
+        """Némítás - a hangerőn keresztül, nem a készülék némításával.
+
+        Mérve: van készülék, amelyik a SetMute 1-et végrehajtja, de a SetMute
+        0-t nem, tehát a némítás bent ragad, és az appból többé nem oldható
+        fel. Olyan parancsot nem adunk ki, amit nem tudunk visszavonni; a
+        hangerő viszont pontosan működik és vissza is olvasható.
+        """
         on = bool(on)
-        with self.lock:
-            hasznalhato = self.mute_readback
-        ok, resp = self._rcs('SetMute', [('Channel', 'Master'),
-                                         ('DesiredMute', 1 if on else 0)])
-        if not ok and hasznalhato:
+        if not on:
+            # A készülék saját némítása is állhat - a távirányítóról, egy másik
+            # alkalmazásból, vagy egy korábbi futásból. Feloldjuk, mielőtt a
+            # hangerőt visszaadnánk, különben a hang akkor sem jönne vissza.
+            self._keszulek_nemitas_feloldasa()
+        ok, resp = self._mute_hangeroval(on)
+        if not ok:
             return False, resp
-
-        if hasznalhato:
-            # Nem elég elküldeni: ellenőrizzük, hogy tényleg megtörtént-e.
-            ok2, body = self._rcs('GetMute', [('Channel', 'Master')])
-            jelentett = (_tag(body, 'CurrentMute') in ('1', 'true')) if ok2 else None
-            if jelentett is not None and jelentett != on:
-                with self.lock:
-                    self.mute_readback = False
-                hasznalhato = False
-
-        if not hasznalhato:
-            ok, resp = self._mute_hangeroval(on)
-            if not ok:
-                return False, resp
-
         with self.lock:
             self.muted = on
         return True, ''
+
+    def _keszulek_nemitas_feloldasa(self):
+        """A készülék SAJÁT némításának feloldása, ha be van kapcsolva.
+
+        Szabályos készüléken ez egy hívás. Van viszont olyan, amelyik a
+        némítást csak bekapcsolni tudja: nála sem a SetMute 0, sem a szabvány
+        szerinti FactoryDefaults visszaállítás, sem a hangerőváltás nem old fel
+        semmit - mérve. Ilyenkor nincs mit tenni, csak szólni: a némítás a
+        készülék távirányítójával szüntethető meg.
+        """
+        if not self._nemitva_jelent():
+            return
+        self._rcs('SetMute', [('Channel', 'Master'), ('DesiredMute', 0)])
+        if not self._nemitva_jelent():
+            return
+        with self.lock:
+            self._jelez('A TV saját némítása be van kapcsolva, és azt az app '
+                        'nem tudja feloldani. Nyomd meg a némítás gombot a TV '
+                        'távirányítóján.')
+
+    def _nemitva_jelent(self):
+        ok, body = self._rcs('GetMute', [('Channel', 'Master')])
+        return bool(ok) and _tag(body, 'CurrentMute') in ('1', 'true')
 
     def _mute_hangeroval(self, on):
         """Némítás a hangerőn keresztül - ott, ahol a SetMute nem működik."""
@@ -852,17 +864,11 @@ class Player(object):
                 with self.lock:
                     self.volume = reported
 
-        ok, body = self._rcs('GetMute', [('Channel', 'Master')])
-        if not ok:
-            return
-        jelentett = _tag(body, 'CurrentMute') in ('1', 'true')
+        # Némának számít, ha a készülék annak vallja magát, vagy ha nincs
+        # hangereje: a felhasználó szempontjából a kettő ugyanaz.
+        jelentett = self._nemitva_jelent()
         with self.lock:
-            if jelentett and self.volume > 0 and not self.muted:
-                # Némítottnak vallja magát, közben hangja is van, és mi nem
-                # némítottuk: a válasza nem használható semmire.
-                self.mute_readback = False
-            elif self.mute_readback:
-                self.muted = jelentett
+            self.muted = jelentett or self.volume <= 0
 
     # -- állapotfigyelés -------------------------------------------------
     def _poll_loop(self):
@@ -1053,7 +1059,6 @@ class Player(object):
                 'duration': round(veges(self.duration), 1),
                 'volume': self.volume,
                 'muted': self.muted,
-                'muteReadback': self.mute_readback,
                 'repeat': self.repeat,
                 'seekUnit': self.seek_unit,
                 'queueLength': len(self.queue),

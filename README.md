@@ -213,7 +213,6 @@ Az állapotválasz:
   "position": 123.0,             // másodperc
   "duration": 2713.0,
   "volume": 22, "muted": false,
-  "muteReadback": false,         // megbízható-e a készülék némítás-válasza
   "repeat": "OFF",
   "seekUnit": "REL_TIME",        // amelyik tekerési egység bevált nála
   "queueLength": 16,
@@ -351,29 +350,44 @@ máshova vinné a lejátszást, a bevált egységet pedig elfelejtené –, hane
 
 ### Némítás
 
-Van készülék, amelyik a `SetMute` hívást elfogadja, de nem hajtja végre, és a
-`GetMute`-ra **beégetve mindig „némítva"** választ ad. (A referenciakészüléken
-ez a helyzet: a válasz akkor is `1`, ha a hangerő 25.) Erre építve a némítás
-gomb működésképtelen lenne: az app azt hinné, már némítva van, és a feloldás
-parancsa hatástalanul menne el.
+A referenciakészüléken a némítás **egyirányú**: bekapcsolni lehet, kikapcsolni
+nem. Kimérve, ismert állapotból indulva:
 
-Az app ezért kétlépcsős:
+```
+SetMute 1                    →  GetMute = 1     ✓ végrehajtja
+SetMute 0                    →  GetMute = 1     ✗ nem old fel
+SetMute 0 ×3                 →  GetMute = 1
+SelectPreset FactoryDefaults →  GetMute = 1
+SetVolume 0 → SetVolume 30   →  GetMute = 1
+```
 
-1. elküldi a `SetMute`-ot, majd **visszaolvasva ellenőrzi**, hogy megtörtént-e;
-2. ha a készülék nem engedelmeskedett, megjegyzi, hogy a némítás-válasza
-   használhatatlan, és onnantól a **hangerőn keresztül** némít: elmenti az
-   aktuális hangerőt, nullára állítja, feloldáskor visszaadja.
+A `GetMute` egyébként igazat mond: a távirányítóval bekapcsolt némítást is
+helyesen jelenti, és feloldás után `0`-ra vált. Csak a DLNA-n keresztüli
+feloldás hiányzik.
 
-A hangerő a legtöbb ilyen készüléken pontosan működik és vissza is olvasható,
-ezért ez megbízható. A csúszka ilyenkor nullát mutat némítás alatt – ez nem
-hiba, hanem az igazság. A hangerő kézi állítása egyben feloldja a némítást.
+Ebből egy szabály következik, ami nem csak a némításra igaz:
 
-A készülék némítás-válaszának megbízhatóságát a `muteReadback` mező jelzi.
+> **Olyan parancsot nem adunk ki, amit nem tudunk visszavonni.**
+
+Ezért az app **soha nem kapcsolja be a készülék némítását.** A némítás a
+hangerőn keresztül történik: elmenti az aktuális hangerőt, nullára állítja,
+feloldáskor visszaadja. Ez minden készüléken működik, visszaolvasható, és nem
+tud beragadni.
+
+A készülék saját némítását – amit a távirányítóról vagy egy másik alkalmazásból
+kapcsoltak be – feloldáskor megpróbálja megszüntetni (`SetMute 0`). Ha a
+készülék erre sem reagál, **kiírja**, hogy a némítás csak a távirányítóval
+szüntethető meg, ahelyett hogy csendben a hangerőt állítgatná tovább.
+
+A csúszka némítás alatt nullát mutat – ez nem hiba, hanem az igazság. A hangerő
+kézi állítása egyben feloldja a némítást.
 
 ### Hangerő-visszaolvasás
 
 Az app elfogadja a készülék által jelentett `0..100` értéket. A `0` valós érték
-(a némítás így valósul meg), nem „nem tudom".
+(a némítás így valósul meg), nem „nem tudom". Közvetlenül egy hangerőváltás
+után a készülék rövid ideig még a régi vagy nulla értéket jelentheti, ezért a
+saját beállításunkat vesszük mérvadónak, és nem olvassuk vissza folyamatosan.
 
 ---
 
@@ -463,6 +477,14 @@ Az app kimondja, mi a baj, ahelyett hogy némán töltene:
 | megszakad a kapcsolat a szerverrel | három sikertelen lekérdezés után piros fejléc |
 | a szerver újraindult (új token) | külön üzenet, hogy a terminálban új cím látható |
 | az állapot mentése nem sikerül | hibaüzenet, ahelyett hogy a sor némán elveszne |
+| a készülék némítása nem oldható fel | üzenet, hogy a távirányítót kell használni |
+
+**Ha a készülék elfogadja a parancsokat, le is tölti a fájlt, mégsem indul el:**
+egyes készülékek hosszabb használat után ilyen állapotba kerülnek – válaszolnak
+az SSDP-re és a SOAP-hívásokra, sőt a médiát is lekérik, de a lejátszást nem
+kezdik meg. Ilyenkor a készülék hálózati újraindítása segít (a menüből indított
+újraindítás gyakran nem elég). Ez nem az app hibája: ugyanígy viselkedik minden
+DLNA-vezérlővel.
 
 **Ha a készülék nem látszik:** először azt ellenőrizd, be van-e kapcsolva.
 Vigyázat: sok TV mély alvásban sem válaszol `ping`-re, miközben a DLNA-ja él –
@@ -479,7 +501,7 @@ A `devtools/` mappában négy eszköz van; az app működéséhez egyik sem kell
 mappa törölhető. Részletek: [`devtools/README.md`](devtools/README.md).
 
 ```bash
-python3 devtools/logictest.py          # 25 ellenőrzés, TV nélkül
+python3 devtools/logictest.py          # 26 ellenőrzés, TV nélkül
 python3 devtools/apitest.py            # 18 ellenőrzés, TV nélkül
 python3 devtools/faketv.py --port 8475 # hamis DLNA-készülék a hálózatra
 python3 devtools/selftest.py <mappa>   # 16 ellenőrzés valódi készülékkel
