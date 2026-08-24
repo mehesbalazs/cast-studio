@@ -64,6 +64,7 @@ class MockTV(dlna.Player):
         self.regi_uri = ''                   # még az ELŐZŐ fájl állását jelenti
         self.regi_pos = 0.0
         self.valtas_ig = 0.0
+        self.megall = False                  # PLAYING-et mond, de a kép áll
         self.seeks = []
         self.tv_uri = ''
         self.tv_volume = 22
@@ -76,7 +77,8 @@ class MockTV(dlna.Player):
         with self.tvlock:
             if self.tv_state == 'PLAYING':
                 now = time.time()
-                self.tv_pos += (now - self.tv_started) * SPEED
+                if not self.megall:
+                    self.tv_pos += (now - self.tv_started) * SPEED
                 self.tv_started = now
 
     def _avt(self, action, args=None, timeout=8.0, with_code=False):
@@ -327,6 +329,76 @@ def main():
     mentve = st.pos.get(A['path'], 0)
     say(mentve > 60, 'az újraindulás nem írja felül kis értékkel a pontot',
         'mentett=%s' % mentve)
+
+    print('\n  Akadozás felismerése')
+
+    # A készülék PLAYING-et jelent, de a kép áll: a hálózat nem viszi. Ezt egy
+    # leolvasásból nem lehet kimondani (a TV egész másodperceket jelent),
+    # ezért ablakban mérjük - a valódi, hibátlan felvételen a legrosszabb
+    # arány is 0,93 volt, a küszöb 0,5.
+    st = Store()
+    p = player(st)
+    jelentes = []
+    p.stall_report = lambda h, e: jelentes.append((h, e)) or '7 kérés, 12 MB'
+    p.set_queue([dict(A)], 0)
+    run(p, 2.0)
+    p.megall = True
+    # A mérési ablak 10 VALÓS másodperc, a virtuális óra viszont tízszeres:
+    # két ablaknyit kell várni, hogy a második teljes egészében az álló képre
+    # essen. (Az elsőbe még belelóg a fagyasztás előtti haladás.)
+    run(p, 23.0)
+    p.shutdown()
+    say(jelentes, 'álló kép PLAYING állapotban akadozásnak számít',
+        ('%.0f mp videó %.0f mp alatt' % jelentes[0]) if jelentes else 'nincs jelzés')
+    say('kadozik' in (p.error or ''), 'az akadozásról a felhasználó is értesül',
+        p.error or 'nincs üzenet')
+
+    # Valódi készülék valódi felvétele, hibátlan lejátszásból: erre egyetlen
+    # riasztás sem eshet. Az adat a saját mérésünkből való (Hisense VIDAA,
+    # ~2 perc, másodperc-pontos jelentéssel), és nem gyorsított: pont azt a
+    # kvantálást tartalmazza, ami a hamis riasztásokat okozná.
+    FELVETEL = [
+     (0.00, 12), (1.26, 13), (2.54, 15), (3.82, 16), (5.14, 17), (6.45, 18),
+     (7.78, 20), (9.09, 21), (10.36, 22), (11.62, 24), (12.88, 25), (14.18, 26),
+     (15.56, 27), (16.81, 29), (18.09, 30), (19.35, 31), (20.64, 33), (21.91, 34),
+     (23.19, 35), (24.46, 36), (25.72, 38), (27.02, 39), (28.37, 40), (29.62, 41),
+     (30.89, 43), (32.22, 44), (33.52, 46), (34.78, 47), (36.06, 48), (37.33, 49),
+     (38.62, 51), (39.98, 52), (41.33, 53), (42.77, 55), (44.03, 56), (45.30, 57),
+     (46.58, 59), (47.87, 60), (49.12, 61), (50.39, 62), (51.68, 64), (53.10, 65),
+     (54.36, 66), (55.65, 68), (56.97, 69), (58.23, 70), (59.52, 71), (60.79, 73),
+     (62.05, 74), (63.33, 75), (64.60, 76), (65.97, 78), (67.31, 79), (68.74, 81),
+     (70.02, 82), (71.37, 83), (72.76, 85), (74.00, 86), (75.25, 87), (76.52, 89),
+     (77.79, 90), (79.06, 91), (80.49, 92), (81.84, 94), (83.11, 95), (84.37, 96),
+     (85.64, 98), (86.91, 99), (88.19, 100), (89.47, 101), (90.76, 103), (92.20, 104),
+     (93.50, 105), (94.77, 107), (96.08, 108), (97.46, 109), (98.82, 111), (100.13, 112),
+     (101.50, 113), (102.87, 115), (104.13, 116), (105.50, 117), (106.87, 119), (108.11, 120),
+     (109.43, 121), (110.81, 123), (112.20, 124), (113.52, 126), (114.80, 127), (116.12, 128),
+    ]
+    q = dlna.Player()
+    q.seeked_at = -1000.0                 # ne a tekerési türelmi idő döntsön
+    talalat = []
+    for t, v in FELVETEL:
+        r = q._akadas_meres(float(v), most=t)
+        if r:
+            talalat.append((t, r))
+    say(not talalat, 'hibátlan valódi felvételre nem ad riasztást',
+        'ablakok: %.0f mp felvétel, riasztás: %s'
+        % (FELVETEL[-1][0], talalat or 'nincs'))
+
+    # Szünet nem akadozás: ott nem is kell haladnia a képnek.
+    st = Store()
+    p = player(st)
+    jelentes = []
+    p.stall_report = lambda h, e: jelentes.append((h, e)) or ''
+    p.set_queue([dict(A)], 0)
+    run(p, 3.0)
+    p.pause()
+    run(p, 13.0)
+    p.resume()
+    run(p, 3.0)
+    p.shutdown()
+    say(not jelentes, 'a szünet nem számít akadozásnak',
+        'jelzés: %s' % (jelentes or 'nincs'))
 
     print('\n  Elemváltás: a készülék még az előzőt jelenti')
 

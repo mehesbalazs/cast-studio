@@ -134,6 +134,21 @@ def platform_probak():
             socket.SO_REUSEPORT = mentett
     say(rendben, 'a hamis TV SO_REUSEPORT nélkül is elindul', reszlet)
 
+    # -- a kiszolgált forgalom számlálása (akadozáskor ez adja a bizonyítékot)
+    server.MEDIA_STATS.clear()
+    server.media_served(1048576)
+    server.media_served(2 * 1048576)
+    kerés, mb = server.media_rate(10)
+    say(kerés == 2 and abs(mb - 3.0) < 0.01,
+        'a kiszolgált forgalom számlálása pontos', '%d kérés, %.2f MB' % (kerés, mb))
+
+    server.MEDIA_STATS.clear()
+    server.MEDIA_STATS.append((time.time() - 60, 10 * 1048576))   # régi
+    server.media_served(1048576)
+    kerés, mb = server.media_rate(10)
+    say(kerés == 1 and abs(mb - 1.0) < 0.01,
+        'a régi forgalom kiesik a mérési ablakból', '%d kérés, %.2f MB' % (kerés, mb))
+
 
 def main():
     root = tempfile.mkdtemp()

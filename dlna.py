@@ -363,6 +363,9 @@ RESTART_DROP = 30.0    # ekkora visszaesést már nem magyarázhat mérési hiba
 RESTART_FIXES = 2      # ennyiszer korrigáljuk egy elemen belül
 SEEK_GRACE = 15.0      # tekerés után ennyi ideig nem gyanakszunk újraindulásra
 START_GRACE = 5.0      # elemváltás után ennyi ideig lehet még az előző elem állása
+STALL_WINDOW = 10.0    # ekkora ablakban nézzük, tart-e a lejátszás a valós idővel
+STALL_RATIO = 0.5      # ennél lassabb haladás már akadozás, nem mérési hiba
+STALL_TELL = 60.0      # ennyinél sűrűbben nem szólunk ugyanarról
 
 UPNP_CLASS = {
     'video': 'object.item.videoItem',
@@ -439,6 +442,10 @@ class Player(object):
         self.restart_fixes = 0       # hányszor rángattuk vissza a készüléket
         self.seeked_at = 0.0         # mikor tekertél utoljára magad
         self.expect_uri = ''         # melyik fájlt indítottuk el a készüléken
+        self.rate_pos = 0.0          # ettől a ponttól mérjük, halad-e a kép
+        self.rate_at = 0.0
+        self.stall_report = None     # a szerver akasztja ide a hálózati mérőit
+        self.stall_told_at = 0.0
         self.stall_reported = False  # jeleztük-e már, hogy nem indul be
         self._saved_at = 0.0         # mikor mentettük utoljára a pozíciót
         self.seek_modes = []         # amit a készülék hirdet magáról
@@ -940,6 +947,69 @@ class Player(object):
                     except Exception:
                         pass
 
+    def _rate_reset(self, pos, most=None):
+        """Új mérési ablak. A hívó tartja a zárat."""
+        self.rate_pos = pos
+        self.rate_at = time.time() if most is None else most
+
+    def _akadas_meres(self, pos, most=None):
+        """Tart-e a lejátszás a valós idővel. A hívó tartja a zárat.
+
+        A `most` az órát adja meg: így egy valódi felvétel visszajátszható
+        anélkül, hogy a teszt a folyamat óráját állítgatná.
+
+        Egyetlen leolvasásból nem dönthető el: a készülék egész másodperceket
+        jelent, 1,2 másodperces lekérdezés mellett tehát hol 1, hol 2 mp-et
+        lép - ez önmagában 0,6-os arányt is adhat úgy, hogy a kép hibátlan.
+        Ezért ablakban mérünk, és csak a tartós lemaradás számít.
+
+        Visszaadja a (videó mp, valós mp) párost, ha akadozást talált.
+        """
+        most = time.time() if most is None else most
+        # Tekerés és folytatás közben a pozíció ugrál: ilyenkor nincs mit mérni.
+        if self.resume_to > 0 or most - self.seeked_at < SEEK_GRACE:
+            self._rate_reset(pos, most)
+            return None
+        if self.rate_at <= 0:
+            self._rate_reset(pos, most)
+            return None
+        eltelt = most - self.rate_at
+        if eltelt < STALL_WINDOW:
+            return None
+        haladt = pos - self.rate_pos
+        self._rate_reset(pos, most)
+        # A negatív haladás újraindulás, azt a visszaesés-figyelő intézi.
+        if 0 <= haladt < eltelt * STALL_RATIO:
+            return (haladt, eltelt)
+        return None
+
+    def _akadas_jelentes(self, haladt, eltelt):
+        """Akadozás: naplóba mindig, a felhasználónak ritkábban.
+
+        A hálózati számlálókat a szerver adja hozzá (a UPnP-réteg nem lát
+        HTTP-t): enélkül csak annyi látszana, hogy "akad", azt viszont nem,
+        hogy közben mennyit kért és kapott a készülék.
+        """
+        reszlet = ''
+        if self.stall_report:
+            try:
+                reszlet = self.stall_report(haladt, eltelt) or ''
+            except Exception:
+                reszlet = ''
+        if debug_log:
+            try:
+                debug_log('akadozás: %.0f mp videó %.0f mp alatt%s'
+                          % (haladt, eltelt, (' - ' + reszlet) if reszlet else ''))
+            except Exception:
+                pass
+        with self.lock:
+            if time.time() - self.stall_told_at < STALL_TELL:
+                return
+            self.stall_told_at = time.time()
+            self._jelez('Akadozik a lejátszás: %.0f másodperc videó ment le '
+                        '%.0f másodperc alatt. A TV nem kapja meg elég gyorsan '
+                        'a fájlt.' % (haladt, eltelt))
+
     def _mas_elemrol_szol(self, track_uri):
         """Igaz, ha a leolvasás nem arról az elemről szól, amit elindítottunk.
 
@@ -985,12 +1055,16 @@ class Player(object):
         advance = False
         do_seek = 0.0
         remember = None
+        akadas = None
         with self.lock:
             prev = self.state
             self.state = state
             self.position = pos
             if dur > 0:
                 self.duration = dur
+            if state != 'PLAYING':
+                # Szünet vagy megállás nem akadozás: kezdjük elölről a mérést.
+                self._rate_reset(pos)
             if state == 'PLAYING':
                 self.saw_playing = True
                 # Két egymást követő leolvasás közti nagy visszaesés az egyetlen
@@ -1006,6 +1080,7 @@ class Player(object):
                                and time.time() - self.seeked_at > SEEK_GRACE
                                and not frissen_indult)
                 self.last_pos = pos
+                akadas = self._akadas_meres(pos)
                 if self.resume_to > 0:
                     # Amíg a folytatás nem ért célba, egy pontot sem mentünk: a
                     # nulláról induló lejátszás különben pár másodperc alatt
@@ -1080,6 +1155,8 @@ class Player(object):
                                  'PAUSED_PLAYBACK')):
                 advance = True
 
+        if akadas:
+            self._akadas_jelentes(*akadas)
         if do_seek > 0:
             self.seek(do_seek, belso=True, timeout=4.0)
         if remember:

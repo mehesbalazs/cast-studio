@@ -11,6 +11,7 @@ Indítás:
 """
 
 import argparse
+import collections
 import json
 import math
 import os
@@ -677,6 +678,34 @@ def probe_codecs(path):
 PUBLIC_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'public')
 CHUNK = 256 * 1024
 
+# Mennyit kért és kapott a készülék az utóbbi időben. Csak akkor kérdezzük le,
+# ha a lejátszás akadozik - addig egyetlen sor egy kiszolgált kérésenként.
+MEDIA_STATS = collections.deque(maxlen=4096)
+MEDIA_LOCK = threading.Lock()
+
+
+def media_served(bytes_out):
+    with MEDIA_LOCK:
+        MEDIA_STATS.append((time.time(), bytes_out))
+
+
+def media_rate(window):
+    """(kérés, MB) az utolsó `window` másodpercben."""
+    hatar = time.time() - max(1.0, window)
+    with MEDIA_LOCK:
+        friss = [b for t, b in MEDIA_STATS if t >= hatar]
+    return len(friss), sum(friss) / 1048576.0
+
+
+def stall_report(haladt, eltelt):
+    """A UPnP-réteg jelzi, hogy akad a kép; a hálózati számokat mi tesszük mellé."""
+    kerés, mb = media_rate(eltelt + 2)
+    reszlet = '%d kérés, %.0f MB' % (kerés, mb)
+    OUT.warn('akadozik a lejátszás: %.0f mp videó %.0f mp alatt - közben %s'
+             % (haladt, eltelt, reszlet))
+    return reszlet
+
+
 CORS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
@@ -1207,6 +1236,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         remaining = length
+        kiment = 0
         try:
             fh.seek(start)
             while remaining > 0:
@@ -1219,11 +1249,16 @@ class Handler(BaseHTTPRequestHandler):
                     break
                 self.wfile.write(data)
                 remaining -= len(data)
+                kiment += len(data)
         except (BrokenPipeError, ConnectionResetError):
             # A TV lejátszás közben bont és újranyit - ez normális.
             self.close_connection = True
         except OSError:
             self.close_connection = True
+        finally:
+            # A megszakadt átvitel is forgalom volt: akadozásnál épp az mutatja
+            # meg, hogy a készülék elkérte, majd eldobta az adatot.
+            media_served(kiment)
 
     def range_error(self, size, headers):
         headers['Content-Range'] = 'bytes */%d' % size
@@ -1345,6 +1380,7 @@ def main():
     PLAYER.position_load = saved_position
     PLAYER.position_save = remember_position
     PLAYER.position_clear = forget_position
+    PLAYER.stall_report = stall_report
     PLAYER.auto_resume = bool(load_state()['settings'].get('resume', True))
 
     try:

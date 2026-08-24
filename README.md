@@ -351,6 +351,34 @@ nem lép tovább a következő egységre – különben egy elfogadott, de rossz
 máshova vinné a lejátszást, a bevált egységet pedig elfelejtené –, hanem később
 újrapróbálja ugyanazzal.
 
+### Ha akadozik a lejátszás
+
+A készülék `PLAYING`-et jelenthet úgy is, hogy a kép valójában áll: a fájlt nem
+kapja meg elég gyorsan. Az app ezt figyeli, de **nem egyetlen leolvasásból**:
+a készülékek egész másodperceket jelentenek, 1,2 másodperces lekérdezés mellett
+tehát hol 1, hol 2 másodpercet lépnek, ami önmagában is 0,6-os arányt adhat
+hibátlan kép mellett. Ezért tízmásodperces ablakban méri, mennyi videó ment le
+mennyi valós idő alatt. Egy hibátlan, nyolcperces felvételen visszajátszva a
+legrosszabb ablak aránya `0,93` volt – a küszöb `0,5`.
+
+Ha akad, a napló nem csak annyit mond, hogy „akad", hanem azt is, mennyit kért
+és kapott közben a készülék:
+
+```
+  figyelem  akadozik a lejátszás: 3 mp videó 10 mp alatt - közben 61 kérés, 168 MB
+```
+
+Ez a két szám dönti el, mi a baj: sok kérés és sok bájt mellett a készülék
+megkapta az adatot, de nem tudta feldolgozni; kevés bájt mellett a hálózat
+vagy a lemez nem bírta.
+
+Érdemes tudni, mennyi tartalék van: a referenciakészülék egy ~1,5 MB/mp-es
+videóhoz **~16 MB/mp-ot kér**, másodpercenként hat `Range`-kéréssel, és a kapott
+adat nagy részét eldobja. Ez a készülék dolga, nem a szerveré – kimérve az is,
+hogy ha a nyitott végű `Range`-re rövidebb választ adunk, a lejátszás
+**összeomlik**, tehát nem szabad megpróbálni. A tartalék viszont ennyivel
+kisebb: terhelt hálózaton ez az elsőként elfogyó erőforrás.
+
 ### Melyik elemről szól a válasz
 
 Elemváltáskor a készülék **még másodpercekig az előző fájl állását jelenti**.
@@ -586,8 +614,8 @@ A `devtools/` mappában négy eszköz van; az app működéséhez egyik sem kell
 mappa törölhető. Részletek: [`devtools/README.md`](devtools/README.md).
 
 ```bash
-python3 devtools/logictest.py          # 35 ellenőrzés, TV nélkül
-python3 devtools/apitest.py            # 21 ellenőrzés, TV nélkül
+python3 devtools/logictest.py          # 39 ellenőrzés, TV nélkül
+python3 devtools/apitest.py            # 23 ellenőrzés, TV nélkül
 python3 devtools/faketv.py --port 8475 # hamis DLNA-készülék a hálózatra
 python3 devtools/selftest.py <mappa>   # 16 ellenőrzés valódi készülékkel
 ```
