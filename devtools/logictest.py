@@ -60,6 +60,10 @@ class MockTV(dlna.Player):
         self.seek_ignored = seek_ignored     # elfogadja, de nem mozdul
         self.seek_fail_first = seek_fail_first   # az első N próbát elutasítja
         self.restart_at = 0.0                # ennél a pozíciónál ugrik vissza 0-ra
+        self.valtas_kesik = 0.0              # váltás után ennyi virtuális mp-ig
+        self.regi_uri = ''                   # még az ELŐZŐ fájl állását jelenti
+        self.regi_pos = 0.0
+        self.valtas_ig = 0.0
         self.seeks = []
         self.tv_uri = ''
         self.tv_volume = 22
@@ -83,9 +87,14 @@ class MockTV(dlna.Player):
         self.tick()
         with self.tvlock:
             if action in ('Stop', 'SetAVTransportURI'):
+                if action == 'Stop':
+                    # Amit a készülék a váltás után még jelenteni fog.
+                    self.regi_uri, self.regi_pos = self.tv_uri, self.tv_pos
                 self.tv_state, self.tv_pos = 'STOPPED', 0.0
                 if action == 'SetAVTransportURI':
                     self.tv_uri = a.get('CurrentURI', '')
+                    if self.valtas_kesik:
+                        self.valtas_ig = time.time() + self.valtas_kesik / SPEED
                 return True, '', ''
             if action == 'Play':
                 self.tv_state = 'TRANSITIONING'
@@ -111,9 +120,15 @@ class MockTV(dlna.Player):
                 return True, ('<CurrentTransportState>%s</CurrentTransportState>'
                               % self.tv_state), ''
             if action == 'GetPositionInfo':
+                # A valódi készülék XML-t ad vissza, tehát a tokenes URL '&'
+                # jele '&amp;'-ként érkezik - a teszt is így adja.
+                kesik = self.valtas_ig and time.time() < self.valtas_ig
+                pos = self.regi_pos if kesik else self.tv_pos
+                uri = self.regi_uri if kesik else self.tv_uri
                 return True, ('<TrackDuration>00:00:00</TrackDuration>'
-                              '<RelTime>%s</RelTime>'
-                              % dlna.seconds_to_hms(self.tv_pos)), ''
+                              '<RelTime>%s</RelTime><TrackURI>%s</TrackURI>'
+                              % (dlna.seconds_to_hms(pos),
+                                 uri.replace('&', '&amp;'))), ''
             if action == 'Seek':
                 self.seeks.append(round(self.tv_pos, 1))
                 if self.seek_fail_first > 0:
@@ -193,12 +208,12 @@ class Store:
 
 
 A = {'path': '/media/elso.mkv', 'name': 'elso.mkv', 'title': 'első',
-     'url': 'http://10.0.0.240:8420/api/media?p=elso', 'kind': 'video',
+     'url': 'http://10.0.0.240:8420/api/media?p=elso&t=abc123', 'kind': 'video',
      'mime': 'video/x-matroska', 'size': 4_600_000_000}
 B = dict(A, path='/media/masodik.mkv', name='masodik.mkv', title='második',
-         url='http://10.0.0.240:8420/api/media?p=masodik')
+         url='http://10.0.0.240:8420/api/media?p=masodik&t=abc123')
 C = dict(A, path='/media/harmadik.mkv', name='harmadik.mkv', title='harmadik',
-         url='http://10.0.0.240:8420/api/media?p=harmadik')
+         url='http://10.0.0.240:8420/api/media?p=harmadik&t=abc123')
 
 
 def player(store, **kw):
@@ -312,6 +327,29 @@ def main():
     mentve = st.pos.get(A['path'], 0)
     say(mentve > 60, 'az újraindulás nem írja felül kis értékkel a pontot',
         'mentett=%s' % mentve)
+
+    print('\n  Elemváltás: a készülék még az előzőt jelenti')
+
+    # Valódi készüléken mérve: a váltás után az első leolvasás még az ELŐZŐ
+    # rész 936. másodpercét adta vissza, a következő pedig az új rész nulláját.
+    # A kettő közti esést újraindulásnak vettük, és az ÚJ részt tekertük oda.
+    st = Store()
+    p = player(st)
+    p.valtas_kesik = 4.0
+    p.set_queue([dict(A), dict(B)], 0)
+    run(p, 15.0)                      # az első elem fusson jó messzire
+    elozo_allas = p.tv_pos
+    p.seeks = []
+    p.switch(1)
+    run(p, 6.0)                       # az új elem ennyi alatt ~60 mp-ig jut
+    p.shutdown()
+    say(not p.seeks and p.tv_pos < elozo_allas * 0.6,
+        'váltáskor nem tekeri az újat az előző elem állására',
+        'előző=%.0f mp, új=%.0f mp, tekerés=%s'
+        % (elozo_allas, p.tv_pos, p.seeks or 'nincs'))
+    say(st.pos.get(B['path'], 0) < elozo_allas * 0.6,
+        'az új elem pontja sem az előzőé lesz',
+        'mentett=%s' % st.pos.get(B['path'], 'nincs'))
 
     print('\n  Ütközések és téves riasztások')
 

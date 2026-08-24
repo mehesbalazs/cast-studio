@@ -15,7 +15,7 @@ python3 devtools/selftest.py <médiamappa>
 
 | eszköz | mit mér | kell hozzá készülék? |
 |---|---|---|
-| `logictest.py` | 33 ellenőrzés: állapotgép, folytatás, ütközések, némítás | nem |
+| `logictest.py` | 35 ellenőrzés: állapotgép, folytatás, ütközések, némítás, elemváltás | nem |
 | `apitest.py` | 21 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság, platformfüggés | nem |
 | `faketv.py` | hamis DLNA-készülék a hálózaton | nem |
 | `selftest.py` | 16 ellenőrzés: a teljes lánc valódi TV-vel és valódi fájllal | **igen** |
@@ -62,6 +62,7 @@ A készülék viselkedése forgatókönyvenként állítható:
 | `seek_fail_first=N` | az első N tekerési kísérletet elutasítja |
 | `restart_at=N` | a megadott pozíciónál magától visszaugrik a fájl elejére |
 | `mute_stuck=True` | a némítást bekapcsolni tudja, kikapcsolni nem – a némítás beragad |
+| `valtas_kesik=N` | elemváltás után N virtuális mp-ig még az előző fájl állását jelenti |
 
 Amit lefed: folytatás háromféle készüléken · a mentett pont védelme ·
 feladás és értesítés · felhasználói felülbírálás · váratlan újraindulás ·

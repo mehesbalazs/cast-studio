@@ -351,6 +351,30 @@ nem lép tovább a következő egységre – különben egy elfogadott, de rossz
 máshova vinné a lejátszást, a bevált egységet pedig elfelejtené –, hanem később
 újrapróbálja ugyanazzal.
 
+### Melyik elemről szól a válasz
+
+Elemváltáskor a készülék **még másodpercekig az előző fájl állását jelenti**.
+Valódi készüléken kimérve, közvetlenül egy váltás után:
+
+```
+váltás E09-re
+  a TV jelenti: RelTime=00:15:36   ← ez még az ELŐZŐ rész
+  a TV jelenti: RelTime=00:00:00   ← innentől az új
+```
+
+A kettő közti esést az app korábban úgy értelmezte, hogy a készülék magától
+visszaugrott a fájl elejére, és „visszatekerte" – az **új** részt a **régi**
+rész állására. Nem kell találgatni: a `GetPositionInfo` a `TrackURI`-ban
+megmondja, melyik fájlnál tart a készülék. Ha az nem az, amit elindítottunk, a
+leolvasásból egyetlen mezőt sem szabad felhasználni.
+
+Az összehasonlítás nem lehet nyers szövegegyezés: a válasz XML, tehát a
+tokenes URL `&` jele `&amp;`-ként érkezik, és van készülék, amelyik újra is
+kódolja az útvonalat. Az app mindkettőt feloldja, mielőtt döntene.
+
+Ha a készülék egyáltalán nem árulja el a `TrackURI`-t, marad az idő: a váltás
+utáni néhány másodpercben az app nem gyanakszik újraindulásra.
+
 ### Némítás
 
 A referenciakészüléken a némítás **egyirányú**: bekapcsolni lehet, kikapcsolni
@@ -562,7 +586,7 @@ A `devtools/` mappában négy eszköz van; az app működéséhez egyik sem kell
 mappa törölhető. Részletek: [`devtools/README.md`](devtools/README.md).
 
 ```bash
-python3 devtools/logictest.py          # 33 ellenőrzés, TV nélkül
+python3 devtools/logictest.py          # 35 ellenőrzés, TV nélkül
 python3 devtools/apitest.py            # 21 ellenőrzés, TV nélkül
 python3 devtools/faketv.py --port 8475 # hamis DLNA-készülék a hálózatra
 python3 devtools/selftest.py <mappa>   # 16 ellenőrzés valódi készülékkel

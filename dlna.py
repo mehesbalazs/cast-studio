@@ -11,8 +11,9 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, unquote
 from xml.sax.saxutils import escape as xesc
+from xml.sax.saxutils import unescape as xunesc
 
 SSDP_ADDR = '239.255.255.250'
 SSDP_PORT = 1900
@@ -28,6 +29,20 @@ CMS = 'urn:schemas-upnp-org:service:ConnectionManager:1'
 def _tag(xml, name):
     m = re.search(r'<%s[^>]*>(.*?)</%s>' % (name, name), xml, re.S)
     return re.sub(r'\s+', ' ', m.group(1)).strip() if m else ''
+
+
+def _uri_azonos(a, b):
+    """Ugyanarra a médiafájlra mutat-e a két cím.
+
+    A nyers egyezés kevés: a készülék XML-ben adja vissza, tehát a tokenes
+    URL '&' jele '&amp;'-ként jön - és van készülék, amelyik újra is kódolja
+    az útvonalat.
+    """
+    if a == b:
+        return True
+    entitasok = {'&quot;': '"', '&apos;': "'"}
+    a, b = xunesc(a, entitasok), xunesc(b, entitasok)
+    return a == b or unquote(a) == unquote(b)
 
 
 def _outbound_ip(target='8.8.8.8'):
@@ -347,6 +362,7 @@ RESUME_TRIES = 8       # ennyi sikertelen próba után feladjuk, és szólunk
 RESTART_DROP = 30.0    # ekkora visszaesést már nem magyarázhat mérési hiba
 RESTART_FIXES = 2      # ennyiszer korrigáljuk egy elemen belül
 SEEK_GRACE = 15.0      # tekerés után ennyi ideig nem gyanakszunk újraindulásra
+START_GRACE = 5.0      # elemváltás után ennyi ideig lehet még az előző elem állása
 
 UPNP_CLASS = {
     'video': 'object.item.videoItem',
@@ -422,6 +438,7 @@ class Player(object):
         self.last_pos = 0.0          # az előző leolvasás - ehhez mérjük a visszaesést
         self.restart_fixes = 0       # hányszor rángattuk vissza a készüléket
         self.seeked_at = 0.0         # mikor tekertél utoljára magad
+        self.expect_uri = ''         # melyik fájlt indítottuk el a készüléken
         self.stall_reported = False  # jeleztük-e már, hogy nem indul be
         self._saved_at = 0.0         # mikor mentettük utoljára a pozíciót
         self.seek_modes = []         # amit a készülék hirdet magáról
@@ -450,6 +467,7 @@ class Player(object):
                 self.stopped_by_user = True
                 self.resume_to = 0.0
                 self.last_pos = 0.0
+                self.expect_uri = ''
                 self.muted = False
                 self.muted_by_us = False
             self.renderer = renderer
@@ -578,6 +596,7 @@ class Player(object):
             self.last_pos = 0.0
             self.restart_fixes = 0
             self.seeked_at = 0.0
+            self.expect_uri = item['url']
             self.stall_reported = False
             self._saved_at = time.time()
 
@@ -921,6 +940,22 @@ class Player(object):
                     except Exception:
                         pass
 
+    def _mas_elemrol_szol(self, track_uri):
+        """Igaz, ha a leolvasás nem arról az elemről szól, amit elindítottunk.
+
+        Elemváltáskor a készülék még másodpercekig az ELŐZŐ fájl állását
+        jelenti. Mérve, valódi készüléken: a váltás után az első leolvasás az
+        előző rész 936. másodpercét adta vissza, a következő pedig az újnak a
+        nulláját - a kettő közti esést újraindulásnak vettük, és az ÚJ részt
+        tekertük a 936. másodpercre. A készülék viszont a GetPositionInfo-ban
+        megmondja, melyik fájlnál tart; nem kell találgatni.
+        """
+        if not track_uri:
+            return False            # nem árulja el - lásd a START_GRACE-t
+        with self.lock:
+            vart = self.expect_uri
+        return bool(vart) and not _uri_azonos(track_uri, vart)
+
     def _poll_once(self):
         ok, body = self._avt('GetTransportInfo', timeout=5.0)
         if not ok:
@@ -937,9 +972,15 @@ class Player(object):
 
         ok, body = self._avt('GetPositionInfo', timeout=5.0)
         pos = dur = 0.0
+        track_uri = ''
         if ok:
             pos = hms_to_seconds(_tag(body, 'RelTime'))
             dur = hms_to_seconds(_tag(body, 'TrackDuration'))
+            track_uri = _tag(body, 'TrackURI') or ''
+
+        if self._mas_elemrol_szol(track_uri):
+            # Nem a mi elemünkről szól: egyetlen mezőt sem szabad róla írni.
+            return
 
         advance = False
         do_seek = 0.0
@@ -956,8 +997,14 @@ class Player(object):
                 # megbízható jele annak, hogy a készülék magától újraindult.
                 # A ki nem szolgált tekerési célhoz mérve hamis riasztás lenne.
                 elozo = self.last_pos
+                # Ha a készülék nem árulja el, melyik fájlnál tart, csak az
+                # idő véd: elemváltás után pár másodpercig még az előző elem
+                # állása jöhet, és azt nem szabad újraindulásnak venni.
+                frissen_indult = (not track_uri
+                                  and time.time() - self.started_at < START_GRACE)
                 visszaesett = (elozo - pos > RESTART_DROP
-                               and time.time() - self.seeked_at > SEEK_GRACE)
+                               and time.time() - self.seeked_at > SEEK_GRACE
+                               and not frissen_indult)
                 self.last_pos = pos
                 if self.resume_to > 0:
                     # Amíg a folytatás nem ért célba, egy pontot sem mentünk: a
