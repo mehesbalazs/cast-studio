@@ -19,6 +19,19 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+
+def konzol_utf8():
+    """Windowson a kodlap tipikusan cp1252, amiben nincs 'o' kettos ekezettel:
+    a magyar kiiras csobe iranyitva UnicodeEncodeError-t dobna."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
+konzol_utf8()
+
 # Az app egy szinttel feljebb van: ez a mappa csak a fejlesztői eszközöké.
 APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = 8499

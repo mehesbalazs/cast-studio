@@ -41,6 +41,19 @@ from xml.sax.saxutils import unescape as xunesc
 
 sys.dont_write_bytecode = True
 
+
+def konzol_utf8():
+    """Windowson a kodlap tipikusan cp1252, amiben nincs 'o' kettos ekezettel:
+    a magyar kiiras csobe iranyitva UnicodeEncodeError-t dobna."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
+konzol_utf8()
+
 SSDP_ADDR = '239.255.255.250'
 SSDP_PORT = 1900
 AVT = 'urn:schemas-upnp-org:service:AVTransport:1'
@@ -485,8 +498,10 @@ def ssdp_server(ip, port, udn, name, stop):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
+        # Windowson a socket modulban nincs SO_REUSEPORT: az attributumhiba
+        # nem OSError, kulon el kell kapni, kulonben elszall a szal.
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-    except OSError:
+    except (OSError, AttributeError):
         pass
     try:
         sock.bind(('', SSDP_PORT))

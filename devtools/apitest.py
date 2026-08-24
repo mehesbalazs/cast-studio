@@ -21,6 +21,19 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+
+def konzol_utf8():
+    """Windowson a kodlap tipikusan cp1252, amiben nincs 'o' kettos ekezettel:
+    a magyar kiiras csobe iranyitva UnicodeEncodeError-t dobna."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
+konzol_utf8()
+
 # Az app egy szinttel feljebb van: ez a mappa csak a fejlesztői eszközöké.
 APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = 8479
@@ -62,6 +75,64 @@ def nyers(kérés, timeout=5):
         pass
     s.close()
     return data
+
+
+def platform_probak():
+    """Windowsra jellemző buktatók, itthonról is mérhetően.
+
+    Windows nem kell hozzá: mindhárom hibát elő lehet idézni azzal, hogy a
+    hiányzó darabot elvesszük (kódlap, meghajtó, socket-beállítás).
+    """
+    # -- nem UTF-8 kódlap (Windowson tipikusan cp1252) -----------------
+    # A súgó ékezetes; ha a kiírás elhasal rajta, ez látszik a kilépőkódon.
+    kornyezet = dict(os.environ, PYTHONIOENCODING='cp1252')
+    p = subprocess.run([sys.executable, os.path.join(APP, 'server.py'), '--help'],
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                       env=kornyezet, timeout=30)
+    kimenet = p.stdout.decode('utf-8', 'replace')
+    say(p.returncode == 0 and 'böngészhető' in kimenet,
+        'nem UTF-8 kódlapon sem vész el az ékezetes kiírás',
+        'kilépőkód %d' % p.returncode)
+
+    sys.path.insert(0, APP)
+    import server                                            # noqa: E402
+
+    # -- az állapotfájl másik meghajtón (Windowson C: és D:) -----------
+    eredeti = os.path.relpath
+
+    def masik_meghajto(*a, **k):
+        raise ValueError("path is on mount 'D:', start on mount 'C:'")
+
+    os.path.relpath = masik_meghajto
+    try:
+        ut = server.rovid_ut('D:\\adat\\state.json', 'C:\\cast-studio')
+        rendben, reszlet = ut == 'D:\\adat\\state.json', ut
+    except ValueError as e:
+        rendben, reszlet = False, str(e)
+    finally:
+        os.path.relpath = eredeti
+    say(rendben, 'más meghajtón lévő állapotfájl nem állítja meg az indulást',
+        reszlet)
+
+    # -- SO_REUSEPORT hiánya (Windowson nincs ilyen socket-beállítás) --
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import faketv                                            # noqa: E402
+    # Windowson eleve nincs ilyen attribútum: ott elvenni sem kell (és nem is
+    # lehet - a mentés maga szállna el).
+    mentett = getattr(socket, 'SO_REUSEPORT', None)
+    if mentett is not None:
+        del socket.SO_REUSEPORT
+    allj = threading.Event()
+    allj.set()                          # azonnal álljon meg, csak az indulás kell
+    try:
+        faketv.ssdp_server('127.0.0.1', 8478, 'uuid:proba', 'proba', allj)
+        rendben, reszlet = True, ''
+    except AttributeError as e:
+        rendben, reszlet = False, str(e)
+    finally:
+        if mentett is not None:
+            socket.SO_REUSEPORT = mentett
+    say(rendben, 'a hamis TV SO_REUSEPORT nélkül is elindul', reszlet)
 
 
 def main():
@@ -189,6 +260,8 @@ def main():
         shutil.rmtree(adat, ignore_errors=True)
 
     say('Traceback' not in napló, 'egyetlen kivétel sem szállt el a naplóba')
+
+    platform_probak()
     print('\n  %d rendben, %d hiba\n' % (len(OK), len(BAD)))
     if BAD:
         print('  megbukott: %s\n' % ', '.join(BAD))

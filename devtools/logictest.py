@@ -21,6 +21,19 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import dlna                                             # noqa: E402
 
+
+def konzol_utf8():
+    """Windowson a kodlap tipikusan cp1252, amiben nincs 'o' kettos ekezettel:
+    a magyar kiiras csobe iranyitva UnicodeEncodeError-t dobna."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
+konzol_utf8()
+
 SPEED = 10.0            # ennyiszeres a virtuális lejátszási óra
 OK, BAD = [], []
 

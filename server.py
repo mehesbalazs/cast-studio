@@ -170,6 +170,27 @@ class Out:
             describe_request(path)))
 
 
+def konzol_utf8():
+    """A kiírás ne vesszen el ékezeten, ha nem UTF-8 a rendszer kódlapja.
+
+    Csőbe vagy fájlba irányítva a Python nem a konzolt, hanem a kódlapot
+    használja. Windowson ez tipikusan cp1252, amiben nincs 'ő': a kiírás
+    UnicodeEncodeError-t dob, azt pedig az Out.line elnyeli (a ValueError
+    leszármazottja). Némán tűnnének el az indulási sorok, köztük a
+    megnyitandó cím - ezért még az első kiírás előtt átállítjuk.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        kodlap = (getattr(stream, 'encoding', '') or '').lower()
+        if kodlap.replace('-', '') == 'utf8':
+            continue
+        try:
+            stream.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
+konzol_utf8()
+
 OUT = Out()
 
 # Melyik végpont mit csinál - a nyers URL helyett ez kerül a naplóba.
@@ -410,6 +431,14 @@ def safe_path(p):
     except ValueError:
         return None
     return ap
+
+
+def rovid_ut(path, base):
+    """Rövid út a kiíráshoz. Windowson más meghajtóra nincs relatív út."""
+    try:
+        return os.path.relpath(path, base)
+    except ValueError:
+        return path
 
 
 def strip_sub_suffix(base):
@@ -1343,7 +1372,7 @@ def main():
     OUT.row('Gyökérkönyvtár', CFG.root)
     OUT.row('Átkódolás', 'ffmpeg elérhető' if CFG.ffmpeg
             else OUT.dim('nincs — brew install ffmpeg'))
-    OUT.row('Állapotfájl', os.path.relpath(STATE_PATH, APP_DIR))
+    OUT.row('Állapotfájl', rovid_ut(STATE_PATH, APP_DIR))
     OUT.line('')
     if not ips:
         OUT.warn('A TV így nem éri el a fájlokat. Csatlakozz a hálózatra.')

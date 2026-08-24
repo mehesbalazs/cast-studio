@@ -16,7 +16,7 @@ python3 devtools/selftest.py <médiamappa>
 | eszköz | mit mér | kell hozzá készülék? |
 |---|---|---|
 | `logictest.py` | 33 ellenőrzés: állapotgép, folytatás, ütközések, némítás | nem |
-| `apitest.py` | 18 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság | nem |
+| `apitest.py` | 21 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság, platformfüggés | nem |
 | `faketv.py` | hamis DLNA-készülék a hálózaton | nem |
 | `selftest.py` | 16 ellenőrzés: a teljes lánc valódi TV-vel és valódi fájllal | **igen** |
 
@@ -84,7 +84,11 @@ Elindítja a valódi `server.py`-t ideiglenes gyökérrel és külön
 - revíziószám: elavult revízióval nem lehet felülírni a sort, és a
   pozíciómentés nem avítja el a megnyitott lapok revízióját;
 - eltűnő mappa `404`-et ad, nem `500`-at;
-- a futás végén a szerver naplójában egyetlen kivétel sem lehet.
+- a futás végén a szerver naplójában egyetlen kivétel sem lehet;
+- platformfüggés: nem UTF-8 kódlapon sem vész el ékezetes kiírás, más
+  meghajtón lévő állapotfájl nem állítja meg az indulást, és a hamis TV
+  `SO_REUSEPORT` nélkül is elindul. Windows nem kell hozzá: mindhárom hiba
+  előidézhető azzal, hogy a hiányzó darabot elvesszük.
 
 ---
 

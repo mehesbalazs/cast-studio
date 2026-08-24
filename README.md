@@ -54,6 +54,7 @@ CORS-fejlécet a SOAP-válaszaihoz.
 | | |
 |---|---|
 | **Python** | 3.9 vagy újabb, kizárólag a szabványos könyvtárral |
+| **Rendszer** | macOS, Linux vagy Windows – lásd [Operációs rendszerek](#operációs-rendszerek) |
 | **Hálózat** | a gép és a TV ugyanazon az alhálózaton, multicast (SSDP) engedélyezve |
 | **TV** | bármilyen DLNA MediaRenderer (AVTransport szolgáltatással) |
 | **ffmpeg** | *nem kötelezett* – ha van, méri a médiahosszt és szükség esetén átkódol |
@@ -68,7 +69,9 @@ Az app mappájából:
 python3 server.py
 ```
 
-macOS-en a Finderből dupla kattintás a `start.command` fájlra.
+macOS-en a Finderből dupla kattintás a `start.command`, Windowson a
+Fájlkezelőből a `start.bat` fájlra. Windowson a parancs `py -3 server.py`
+vagy `python server.py`.
 
 A terminál kiírja a megnyitandó címet:
 
@@ -475,6 +478,40 @@ kívülre semmit nem ír:
 
 Az egyetlen írt fájl a `data/state.json`, ami az első mentéskor jön létre.
 
+### Operációs rendszerek
+
+Egy kódbázis, három rendszer: nincs benne fordítandó rész, és nincs olyan
+hívás, ami csak POSIX-on létezik (`fcntl`, `pwd`, `os.fork`, `SIGKILL`).
+Az útvonalakat végig az `os.path` kezeli, a felület pedig a `\` és a `/`
+elválasztót egyaránt érti.
+
+Amit a rendszerek eltérése miatt külön kezel az app:
+
+| eltérés | hol jönne elő | mit csinál |
+|---|---|---|
+| a hálózati kártyák lekérdezése | Windowson nincs `ifconfig` | a saját címet route-lekérdezéssel állapítja meg, a külső parancs csak tartalék |
+| a konzol kódlapja | Windowson tipikusan `cp1252`, amiben nincs `ő` | induláskor UTF-8-ra állítja a kimenetet – enélkül csőbe irányítva **némán eltűnnének** az ékezetes sorok, köztük a megnyitandó cím |
+| meghajtóbetűk | `--data` másik meghajtón, mint az app | a kiíráshoz nem erőlteti a relatív utat (`relpath` más meghajtóra kivételt dob) |
+| `SO_REUSEPORT` | Windowson nincs ilyen socket-beállítás | a `devtools/faketv.py` az `AttributeError`-t is elkapja |
+
+Amit **nem** kezel, és Windowson tudni kell róla:
+
+- **Tűzfal.** Az első indításkor a Windows Defender rákérdez a bejövő
+  kapcsolatra. Engedélyezni kell (magánhálózatra elég), különben a TV nem
+  tudja letölteni a fájlt, és a felület sem jön be másik gépről.
+- **Másik meghajtó.** A gyökér alapból a home könyvtár (`C:\Users\...`), és az
+  app azon kívülre nem enged. Ha a filmek `D:`-n vannak, indításkor meg kell
+  adni: `py -3 server.py --root D:\Filmek`.
+- **Rejtett fájlok.** Az app a `.`-tal kezdődő neveket rejti el; a Windows
+  rejtett *attribútumát* nem nézi, az ilyen fájlok látszanak.
+- **Hibaüzenetek.** A hálózati hibák szövegét a rendszer hibakódjából
+  fordítja; a Windows kódjait (10060, 10061) nem ismeri fel egyenként, ezért
+  ott az általános „Nem sikerült elérni a TV-t" üzenet jön.
+
+A fenti pontok macOS-en lettek megmérve úgy, hogy a hiányzó darabot elvettük
+(kódlap, meghajtó, socket-beállítás) – **valódi Windowson nem futott próba.**
+A `devtools/apitest.py` mindhárom esetet ellenőrzi, rendszertől függetlenül.
+
 ### Leállítás és a készülék puffere
 
 `Ctrl+C` azonnal leállítja az appot, és alapból a készüléken is megállítja a
@@ -526,7 +563,7 @@ mappa törölhető. Részletek: [`devtools/README.md`](devtools/README.md).
 
 ```bash
 python3 devtools/logictest.py          # 33 ellenőrzés, TV nélkül
-python3 devtools/apitest.py            # 18 ellenőrzés, TV nélkül
+python3 devtools/apitest.py            # 21 ellenőrzés, TV nélkül
 python3 devtools/faketv.py --port 8475 # hamis DLNA-készülék a hálózatra
 python3 devtools/selftest.py <mappa>   # 16 ellenőrzés valódi készülékkel
 ```
@@ -535,12 +572,13 @@ python3 devtools/selftest.py <mappa>   # 16 ellenőrzés valódi készülékkel
 
 ## Fájlok
 
-A használathoz ez az öt dolog kell:
+A használathoz ez a hat dolog kell:
 
 | | |
 |---|---|
 | `server.py` | HTTP-kiszolgáló: fájllista, Range-streamelés, SRT→VTT, hosszmérés, DLNA API |
 | `dlna.py` | UPnP-réteg: SSDP-felderítés, SOAP-vezérlés, DIDL-metaadat, sorléptetés |
 | `public/index.html` | a teljes kezelőfelület (HTML + CSS + JS egy fájlban) |
-| `start.command` | dupla kattintásos indító macOS-re |
+| `start.command` | dupla kattintásos indító macOS-re és Linuxra |
+| `start.bat` | dupla kattintásos indító Windowsra |
 | `data/state.json` | az egyetlen fájl, amit az app ír (futás közben jön létre) |
