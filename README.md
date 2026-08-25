@@ -155,7 +155,9 @@ public/index.html   a teljes kezelőfelület egy fájlban (HTML + CSS + JS)
 **A `Player` osztály** tartja a lejátszási sort, és egy háttérszál
 másodpercenként (szünetben ritkábban) lekérdezi a készülék állapotát. Ez a szál
 felel a sor léptetéséért is: a DLNA-ban nincs beépített lejátszási sor fogalom,
-ezért amikor egy elem véget ér, ez a réteg indítja a következőt.
+ezért amikor egy elem véget ér, ez a réteg indítja a következőt. Ugyanez a szál
+figyeli, hogy a lejátszás tart-e a valós idővel, és hogy a válasz tényleg arról
+az elemről szól-e, amit elindítottunk.
 
 A `Player` a készülékparancsokat zárral sorosítja: egy elem indítása három
 hívásból áll (`Stop`, `SetAVTransportURI`, `Play`), és két egyidejű indítás
@@ -591,6 +593,7 @@ Az app kimondja, mi a baj, ahelyett hogy némán töltene:
 | a szerver újraindult (új token) | külön üzenet, hogy a terminálban új cím látható |
 | az állapot mentése nem sikerül | hibaüzenet, ahelyett hogy a sor némán elveszne |
 | a készülék némítása nem oldható fel | üzenet, hogy a távirányítót kell használni |
+| áll a kép, pedig a készülék lejátszást jelent | üzenet a felületen, és a naplóban a kiszolgált kérés/bájt is |
 
 **Ha a készülék elfogadja a parancsokat, le is tölti a fájlt, mégsem indul el:**
 egyes készülékek hosszabb használat után ilyen állapotba kerülnek – válaszolnak
