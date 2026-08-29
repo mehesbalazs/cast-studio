@@ -161,6 +161,11 @@ def main():
     os.chmod(tilos, 0)
     ures = os.path.join(root, 'ures.mp4')
     open(ures, 'wb').close()
+    # Ahogy a Notepad menti "Unicode"-ként: a cp1250 ezt is "sikeresen"
+    # dekódolná, csupa NUL-lal tűzdelt olvashatatlan szöveggé.
+    utf16 = os.path.join(root, 'felirat.srt')
+    with open(utf16, 'wb') as fh:
+        fh.write('1\n00:00:01,000 --> 00:00:02,000\nSzia, világ!\n'.encode('utf-16'))
 
     print('\n  A HTTP-réteg önellenőrzése (TV nélkül)\n')
     srv = subprocess.Popen(
@@ -256,6 +261,12 @@ def main():
         req('/api/state', {'positions': {'q': {'pos': 50, 'dur': 100, 'at': 2}}})
         say(json.loads(req('/api/state')[1])['rev'] == elozo,
             'a pozíciómentés nem avítja el a lapok revízióját')
+
+        # -- felirat kódolása ------------------------------------------
+        c, d = req('/api/sub?path=' + q(utf16, safe=''))
+        say(c == 200 and 'Szia, világ!' in d and '\x00' not in d,
+            'UTF-16-os felirat olvashatóan jön ki',
+            'HTTP %s, %s' % (c, 'NUL a szövegben' if '\x00' in d else 'tiszta'))
 
         # -- forgalommérés: mindkét kiszolgáló út beleszámít -----------
         def forgalom():

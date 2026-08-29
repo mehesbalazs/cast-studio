@@ -15,8 +15,8 @@ python3 devtools/selftest.py <médiamappa>
 
 | eszköz | mit mér | kell hozzá készülék? |
 |---|---|---|
-| `logictest.py` | 42 ellenőrzés: állapotgép, folytatás, ütközések, némítás, elemváltás, akadozás | nem |
-| `apitest.py` | 25 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság, platformfüggés, forgalommérés | nem |
+| `logictest.py` | 46 ellenőrzés: állapotgép, folytatás, ütközések, némítás, elemváltás, akadozás, idegen tartalom | nem |
+| `apitest.py` | 26 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság, platformfüggés, forgalom, feliratkódolás | nem |
 | `faketv.py` | hamis DLNA-készülék a hálózaton | nem |
 | `selftest.py` | 16 ellenőrzés: a teljes lánc valódi TV-vel és valódi fájllal | **igen** |
 
@@ -66,6 +66,7 @@ A készülék viselkedése forgatókönyvenként állítható:
 | `megall=True` | `PLAYING`-et jelent, de a kép áll – a hálózat nem viszi |
 | `idegen_uri=…` | mást jelent, mint amit elindítottunk (a TV-n átváltottak) |
 | `nincs_pozicio=True` | `RelTime = NOT_IMPLEMENTED`: sosem jelent pozíciót |
+| `uri_atir=True` | átírja a kapott cím gépnevét, ahogy egyes készülékek |
 
 Amit lefed: folytatás háromféle készüléken · a mentett pont védelme ·
 feladás és értesítés · felhasználói felülbírálás · váratlan újraindulás ·
@@ -89,6 +90,7 @@ Elindítja a valódi `server.py`-t ideiglenes gyökérrel és külön
   pozíciómentés nem avítja el a megnyitott lapok revízióját;
 - eltűnő mappa `404`-et ad, nem `500`-at;
 - forgalommérés: a kiszolgált fájl és az átkódolt adás is beleszámít;
+- feliratkódolás: BOM-os (UTF-16) fájl is olvashatóan jön ki;
 - a futás végén a szerver naplójában egyetlen kivétel sem lehet;
 - platformfüggés: nem UTF-8 kódlapon sem vész el ékezetes kiírás, más
   meghajtón lévő állapotfájl nem állítja meg az indulást, és a hamis TV

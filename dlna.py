@@ -31,18 +31,34 @@ def _tag(xml, name):
     return re.sub(r'\s+', ' ', m.group(1)).strip() if m else ''
 
 
+def _uri_mag(u):
+    """Az URL azonosító része: útvonal + lekérdezés, gépnév és port nélkül."""
+    try:
+        r = urlparse(u)
+    except ValueError:
+        return ''
+    if not r.path:
+        return ''
+    return unquote(r.path) + '?' + unquote(r.query)
+
+
 def _uri_azonos(a, b):
     """Ugyanarra a médiafájlra mutat-e a két cím.
 
     A nyers egyezés kevés: a készülék XML-ben adja vissza, tehát a tokenes
     URL '&' jele '&amp;'-ként jön - és van készülék, amelyik újra is kódolja
-    az útvonalat.
+    az útvonalat. A gépnév pedig egyáltalán nem azonosít: van készülék,
+    amelyik a kapott címet átírja. A fájlt a `path=` paraméter jelöli ki,
+    tehát az útvonal és a lekérdezés dönt.
     """
     if a == b:
         return True
     entitasok = {'&quot;': '"', '&apos;': "'"}
     a, b = xunesc(a, entitasok), xunesc(b, entitasok)
-    return a == b or unquote(a) == unquote(b)
+    if a == b or unquote(a) == unquote(b):
+        return True
+    mag = _uri_mag(a)
+    return bool(mag) and mag == _uri_mag(b)
 
 
 def _outbound_ip(target='8.8.8.8'):
@@ -1063,8 +1079,10 @@ class Player(object):
             if not self.idegen_szolt:
                 self.idegen_szolt = True
                 self.state = 'STOPPED'
-                # Nem mi állítottuk le, de a sort sem szabad emiatt léptetni.
-                self.stopped_by_user = True
+                # A sort nem kell külön letiltani: idegen tartalomnál a
+                # lekérdezés már korábban visszatér, tehát a léptetés ki sem
+                # számolódik. Egy itt beragadó "mi állítottuk le" jelzés viszont
+                # a visszaváltás UTÁN is blokkolná a következő rész indítását.
                 self._jelez('A TV most nem azt játssza, amit innen indítottunk. '
                             'Ha átváltottál rajta, indítsd újra a lejátszást.')
             return True

@@ -67,6 +67,7 @@ class MockTV(dlna.Player):
         self.megall = False                  # PLAYING-et mond, de a kép áll
         self.idegen_uri = ''                 # mást jelent, mint amit indítottunk
         self.nincs_pozicio = False           # RelTime = NOT_IMPLEMENTED
+        self.uri_atir = False                # átírja a kapott cím gépnevét
         self.seeks = []
         self.tv_uri = ''
         self.tv_volume = 22
@@ -129,6 +130,8 @@ class MockTV(dlna.Player):
                 kesik = self.valtas_ig and time.time() < self.valtas_ig
                 pos = self.regi_pos if kesik else self.tv_pos
                 uri = self.idegen_uri or (self.regi_uri if kesik else self.tv_uri)
+                if self.uri_atir and uri:
+                    uri = uri.replace('10.0.0.240:8420', 'sajat-gep.local:8420')
                 rel = ('NOT_IMPLEMENTED' if self.nincs_pozicio
                        else dlna.seconds_to_hms(pos))
                 return True, ('<TrackDuration>00:00:00</TrackDuration>'
@@ -435,6 +438,39 @@ def main():
     say(p.state == 'STOPPED' and 'nem azt játssza' in (p.error or ''),
         'a tartósan idegen tartalomról szól, nem fagy be némán',
         '%s / %s' % (p.state, p.error or 'nincs üzenet'))
+
+    # A fájlt a `path=` paraméter azonosítja, nem a gépnév: van készülék,
+    # amelyik a kapott címet átírja. Ha ezt idegen tartalomnak vennénk,
+    # hibátlan lejátszás közben mondanánk le a követésről.
+    alap = A['url']
+    say(dlna._uri_azonos(alap.replace('10.0.0.240:8420', 'gep.local:8420'), alap),
+        'az átírt gépnév nem tesz másik fájllá', 'gépnév csere')
+    say(not dlna._uri_azonos(alap.replace('p=elso', 'p=masodik'), alap),
+        'másik fájlt továbbra is megkülönböztet', 'más path=')
+
+    st = Store()
+    p = player(st)
+    p.uri_atir = True
+    p.set_queue([dict(A)], 0)
+    run(p, 14.0)                      # jóval az IDEGEN_TURELEM (10 mp) fölött
+    p.shutdown()
+    say(p.state == 'PLAYING' and not p.error and p.position > 0,
+        'a címet átíró készüléket nem nyilvánítja idegennek',
+        '%s / %s / pos=%.0f' % (p.state, p.error or 'nincs üzenet', p.position))
+
+    # Az idegen szakasz után a sornak tovább kell lépnie a rész végén. Egy itt
+    # beragadó "mi állítottuk le" jelzés ezt némán blokkolná.
+    st = Store()
+    p = player(st, duration=260.0)
+    p.set_queue([dict(A), dict(B)], 0)
+    run(p, 2.0)
+    p.idegen_uri = 'http://10.0.0.240:8420/api/media?p=masvalami&t=abc123'
+    run(p, 12.0)                      # túl a türelmen: szól róla
+    p.idegen_uri = ''                 # a készülék visszaáll a mi tartalmunkra
+    run(p, 14.0)                      # az elem eléri a végét
+    p.shutdown()
+    say(p.index == 1, 'idegen tartalom után is lép a sor a rész végén',
+        'index=%d' % p.index)
 
     print('\n  Elemváltás: a készülék még az előzőt jelenti')
 

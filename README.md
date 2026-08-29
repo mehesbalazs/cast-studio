@@ -405,7 +405,10 @@ leolvasásból egyetlen mezőt sem szabad felhasználni.
 
 Az összehasonlítás nem lehet nyers szövegegyezés: a válasz XML, tehát a
 tokenes URL `&` jele `&amp;`-ként érkezik, és van készülék, amelyik újra is
-kódolja az útvonalat. Az app mindkettőt feloldja, mielőtt döntene.
+kódolja az útvonalat. Az app mindkettőt feloldja, mielőtt döntene. A **gépnév
+pedig egyáltalán nem azonosít** – van készülék, amelyik a kapott címet átírja –,
+ezért a döntés az útvonalra és a lekérdezésre épül: a fájlt a `path=` paraméter
+jelöli ki.
 
 Ha a készülék egyáltalán nem árulja el a `TrackURI`-t, marad az idő: a váltás
 utáni néhány másodpercben az app nem gyanakszik újraindulásra.
@@ -504,6 +507,13 @@ menet közben WebVTT-re konvertálódik a `/api/sub` végponton.
 
 A külső feliratot minden gyártó máshogy kezeli, és sok készüléken nem
 megbízható. Ha nem jelenik meg, a fájlba ágyazott feliratsáv a biztos megoldás.
+
+**Kódolás.** A magyar feliratok ritkán UTF-8-ak. Az app előbb a bájtsorrend-jelet
+(BOM) nézi meg, és csak utána próbálkozik sorban: `utf-8` → `cp1250` →
+`iso-8859-2`. A sorrend nem cserélhető fel, és a BOM-vizsgálat sem hagyható ki:
+a `cp1250` szinte minden bájtsort elfogad, tehát egy UTF-16-os fájlt is
+„sikeresen" dekódolna – csupa NUL-lal tűzdelt, olvashatatlan szöveggé. (A
+Windows Jegyzettömb „Unicode" mentése pontosan ilyen fájlt ad.)
 
 ---
 
@@ -629,8 +639,8 @@ A `devtools/` mappában négy eszköz van; az app működéséhez egyik sem kell
 mappa törölhető. Részletek: [`devtools/README.md`](devtools/README.md).
 
 ```bash
-python3 devtools/logictest.py          # 42 ellenőrzés, TV nélkül
-python3 devtools/apitest.py            # 25 ellenőrzés, TV nélkül
+python3 devtools/logictest.py          # 46 ellenőrzés, TV nélkül
+python3 devtools/apitest.py            # 26 ellenőrzés, TV nélkül
 python3 devtools/faketv.py --port 8475 # hamis DLNA-készülék a hálózatra
 python3 devtools/selftest.py <mappa>   # 16 ellenőrzés valódi készülékkel
 ```

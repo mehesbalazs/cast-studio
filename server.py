@@ -11,6 +11,7 @@ Indítás:
 """
 
 import argparse
+import codecs
 import collections
 import json
 import math
@@ -536,10 +537,28 @@ def srt_to_vtt(text):
     return 'WEBVTT\n\n' + text
 
 
+# A BOM-os kódolásokat előre le kell kezelni. A cp1250 ugyanis szinte minden
+# bájtsort elfogad, tehát egy UTF-16-os feliratot is "sikeresen" dekódolna -
+# csupa NUL-lal tűzdelt, olvashatatlan szöveggé. Az UTF-32 LE jele a UTF-16 LE
+# jelével kezdődik, ezért a hosszabb BOM-ot kell előbb próbálni.
+BOM_KODOLASOK = (
+    (codecs.BOM_UTF32_LE, 'utf-32'), (codecs.BOM_UTF32_BE, 'utf-32'),
+    (codecs.BOM_UTF16_LE, 'utf-16'), (codecs.BOM_UTF16_BE, 'utf-16'),
+)
+
+
 def read_text(path):
     with open(path, 'rb') as fh:
         raw = fh.read()
-    for enc in ('utf-8-sig', 'utf-8', 'cp1250', 'iso-8859-2', 'latin-1'):
+    for bom, enc in BOM_KODOLASOK:
+        if raw.startswith(bom):
+            try:
+                return raw.decode(enc)
+            except UnicodeDecodeError:
+                break          # hazudik a jel: menjen a szokásos úton
+    # A latin-1 szándékosan nincs a sorban: minden bájtot leképez, tehát a
+    # végén álló 'replace' elől venné el a helyet anélkül, hogy bármit megoldana.
+    for enc in ('utf-8-sig', 'utf-8', 'cp1250', 'iso-8859-2'):
         try:
             return raw.decode(enc)
         except UnicodeDecodeError:
