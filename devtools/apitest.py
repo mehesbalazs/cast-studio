@@ -257,6 +257,39 @@ def main():
         say(json.loads(req('/api/state')[1])['rev'] == elozo,
             'a pozíciómentés nem avítja el a lapok revízióját')
 
+        # -- forgalommérés: mindkét kiszolgáló út beleszámít -----------
+        def forgalom():
+            # Hiányzó kulcsra nullát adunk: egy elmaradt mező bukjon meg
+            # ellenőrzésként, ne szakítsa félbe az egész futást.
+            return json.loads(req('/api/info')[1]).get(
+                'traffic', {'requests': 0, 'mb': 0.0})
+
+        elotte = forgalom()
+        req('/api/media?path=' + q(os.path.join(root, 'ok.mp4'), safe=''))
+        utana = forgalom()
+        say(utana['requests'] > elotte['requests'] and utana['mb'] >= elotte['mb'],
+            'a kiszolgált fájl beleszámít a forgalomba',
+            '%d -> %d kérés' % (elotte['requests'], utana['requests']))
+
+        # Az átkódolt út külön kód, és eddig egyetlen bájtot sem jelentett:
+        # akadozáskor "0 kérés, 0 MB" jött volna, ami az ellenkezőjére vezet.
+        ffmpeg = shutil.which('ffmpeg')
+        if ffmpeg:
+            klip = os.path.join(root, 'proba.mp4')
+            subprocess.run(
+                [ffmpeg, '-y', '-hide_banner', '-loglevel', 'error',
+                 '-f', 'lavfi', '-i', 'testsrc=size=64x64:rate=10:duration=2',
+                 '-pix_fmt', 'yuv420p', klip],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+            elotte = forgalom()
+            c, _ = req('/api/stream?path=' + q(klip, safe='') + '&mode=remux')
+            utana = forgalom()
+            say(c == 200 and utana['mb'] > elotte['mb'],
+                'az átkódolt adás is beleszámít a forgalomba',
+                'HTTP %s, %.2f -> %.2f MB' % (c, elotte['mb'], utana['mb']))
+        else:
+            print('  [ -- ] az átkódolt adás mérése kihagyva: nincs ffmpeg')
+
         # -- eltűnő mappa ----------------------------------------------
         el = os.path.join(root, 'eltunik')
         os.makedirs(el, exist_ok=True)

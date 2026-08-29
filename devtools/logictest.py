@@ -65,6 +65,8 @@ class MockTV(dlna.Player):
         self.regi_pos = 0.0
         self.valtas_ig = 0.0
         self.megall = False                  # PLAYING-et mond, de a kép áll
+        self.idegen_uri = ''                 # mást jelent, mint amit indítottunk
+        self.nincs_pozicio = False           # RelTime = NOT_IMPLEMENTED
         self.seeks = []
         self.tv_uri = ''
         self.tv_volume = 22
@@ -126,11 +128,12 @@ class MockTV(dlna.Player):
                 # jele '&amp;'-ként érkezik - a teszt is így adja.
                 kesik = self.valtas_ig and time.time() < self.valtas_ig
                 pos = self.regi_pos if kesik else self.tv_pos
-                uri = self.regi_uri if kesik else self.tv_uri
+                uri = self.idegen_uri or (self.regi_uri if kesik else self.tv_uri)
+                rel = ('NOT_IMPLEMENTED' if self.nincs_pozicio
+                       else dlna.seconds_to_hms(pos))
                 return True, ('<TrackDuration>00:00:00</TrackDuration>'
                               '<RelTime>%s</RelTime><TrackURI>%s</TrackURI>'
-                              % (dlna.seconds_to_hms(pos),
-                                 uri.replace('&', '&amp;'))), ''
+                              % (rel, uri.replace('&', '&amp;'))), ''
             if action == 'Seek':
                 self.seeks.append(round(self.tv_pos, 1))
                 if self.seek_fail_first > 0:
@@ -399,6 +402,39 @@ def main():
     p.shutdown()
     say(not jelentes, 'a szünet nem számít akadozásnak',
         'jelzés: %s' % (jelentes or 'nincs'))
+
+    # Pozíciót nem jelentő készüléken a "nem haladt" örökké igaz lenne.
+    st = Store()
+    p = player(st)
+    p.nincs_pozicio = True
+    jelentes = []
+    p.stall_report = lambda h, e: jelentes.append((h, e)) or ''
+    p.set_queue([dict(A)], 0)
+    run(p, 25.0)                      # két teljes mérési ablak
+    p.shutdown()
+    say(not jelentes, 'pozíciót nem jelentő készüléken nincs hamis riasztás',
+        'jelzés: %s' % (jelentes or 'nincs'))
+
+    print('\n  A készüléken másra váltottak')
+
+    # Az elemváltás pár másodperces átállását még meg kell várni, a tartósan
+    # idegen tartalmat viszont ki kell mondani: "lejátszás" alatt befagyott
+    # pozíciót mutatni némán hazugság lenne.
+    st = Store()
+    p = player(st)
+    p.set_queue([dict(A)], 0)
+    run(p, 3.0)
+    p.idegen_uri = 'http://10.0.0.240:8420/api/media?p=masvalami&t=abc123'
+    run(p, 4.0)                       # az IDEGEN_TURELEM 10 valós mp
+    korai = (p.state, p.error)
+    run(p, 10.0)
+    p.shutdown()
+    say(korai[0] == 'PLAYING' and not korai[1],
+        'a rövid átállást még nem kiabálja ki', 'közben: %s / %s'
+        % (korai[0], korai[1] or 'nincs üzenet'))
+    say(p.state == 'STOPPED' and 'nem azt játssza' in (p.error or ''),
+        'a tartósan idegen tartalomról szól, nem fagy be némán',
+        '%s / %s' % (p.state, p.error or 'nincs üzenet'))
 
     print('\n  Elemváltás: a készülék még az előzőt jelenti')
 

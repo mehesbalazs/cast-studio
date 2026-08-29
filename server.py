@@ -1081,7 +1081,14 @@ class Handler(BaseHTTPRequestHandler):
             'ffmpeg': bool(CFG.ffmpeg),
             'sep': os.sep,
             'stateFile': STATE_PATH,
+            'traffic': self.traffic_info(),
         })
+
+    @staticmethod
+    def traffic_info():
+        """Mennyit vitt el a készülék az utóbbi percben - hibakereséshez."""
+        kerés, mb = media_rate(60)
+        return {'window': 60, 'requests': kerés, 'mb': round(mb, 2)}
 
     def shortcuts(self):
         out = []
@@ -1307,6 +1314,7 @@ class Handler(BaseHTTPRequestHandler):
         for k, v in headers.items():
             self.send_header(k, v)
         self.end_headers()
+        kiment = 0
         try:
             if self.command != 'HEAD':
                 while True:
@@ -1314,9 +1322,14 @@ class Handler(BaseHTTPRequestHandler):
                     if not data:
                         break
                     self.wfile.write(data)
+                    kiment += len(data)
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
         finally:
+            # Enélkül az akadozás-jelentés "0 kérés, 0 MB"-ot írna át-
+            # kódolás közben, és pont az ellenkezőjére vezetne: úgy tűnne,
+            # a hálózat halott, holott az ffmpeg táplálja a készüléket.
+            media_served(kiment)
             self._reap(proc)
 
     @staticmethod

@@ -176,7 +176,7 @@ oldal betölthető legyen.
 
 | Végpont | Leírás |
 |---|---|
-| `GET /api/info` | gyökér, port, LAN-címek, gyorsmenük, elérhető-e ffmpeg |
+| `GET /api/info` | gyökér, port, LAN-címek, gyorsmenük, elérhető-e ffmpeg, kiszolgált forgalom |
 | `GET /api/browse?path=…&hidden=0` | egy mappa tartalma (mappák, fájlok, felirat-párok) |
 | `GET /api/scan?path=…` | rekurzív beolvasás (legfeljebb 3000 elem) |
 | `GET /api/media?path=…` | médiafájl, HTTP Range támogatással |
@@ -363,6 +363,11 @@ hibátlan kép mellett. Ezért tízmásodperces ablakban méri, mennyi videó me
 mennyi valós idő alatt. Egy hibátlan, nyolcperces felvételen visszajátszva a
 legrosszabb ablak aránya `0,93` volt – a küszöb `0,5`.
 
+Van készülék, amelyik **egyáltalán nem jelent pozíciót** (`RelTime =
+NOT_IMPLEMENTED`). Ott a „nem haladt" örökké igaz lenne, és az app percenként
+riasztana hibátlan lejátszás közben – ezért csak akkor mér, ha a készülék az
+adott elemhez mutatott már nem nulla állást.
+
 Ha akad, a napló nem csak annyit mond, hogy „akad", hanem azt is, mennyit kért
 és kapott közben a készülék:
 
@@ -404,6 +409,12 @@ kódolja az útvonalat. Az app mindkettőt feloldja, mielőtt döntene.
 
 Ha a készülék egyáltalán nem árulja el a `TrackURI`-t, marad az idő: a váltás
 utáni néhány másodpercben az app nem gyanakszik újraindulásra.
+
+Az eltérést viszont **csak néhány másodpercig magyarázza az átállás**. Ha a
+készüléken közben másik bemenetre vagy alkalmazásra váltottak, az eltérés
+tartós – ilyenkor az app a leolvasást továbbra sem használja fel, de nem is
+hallgat róla: „lejátszás" felirat alatt befagyott pozíciót mutatni ugyanaz a
+néma hiba lenne, ami ellen az egész app épült.
 
 ### Némítás
 
@@ -594,6 +605,7 @@ Az app kimondja, mi a baj, ahelyett hogy némán töltene:
 | az állapot mentése nem sikerül | hibaüzenet, ahelyett hogy a sor némán elveszne |
 | a készülék némítása nem oldható fel | üzenet, hogy a távirányítót kell használni |
 | áll a kép, pedig a készülék lejátszást jelent | üzenet a felületen, és a naplóban a kiszolgált kérés/bájt is |
+| a készüléken másra váltottak | néhány másodperc után üzenet, nem befagyott „lejátszás" |
 
 **Ha a készülék elfogadja a parancsokat, le is tölti a fájlt, mégsem indul el:**
 egyes készülékek hosszabb használat után ilyen állapotba kerülnek – válaszolnak
@@ -617,8 +629,8 @@ A `devtools/` mappában négy eszköz van; az app működéséhez egyik sem kell
 mappa törölhető. Részletek: [`devtools/README.md`](devtools/README.md).
 
 ```bash
-python3 devtools/logictest.py          # 39 ellenőrzés, TV nélkül
-python3 devtools/apitest.py            # 23 ellenőrzés, TV nélkül
+python3 devtools/logictest.py          # 42 ellenőrzés, TV nélkül
+python3 devtools/apitest.py            # 25 ellenőrzés, TV nélkül
 python3 devtools/faketv.py --port 8475 # hamis DLNA-készülék a hálózatra
 python3 devtools/selftest.py <mappa>   # 16 ellenőrzés valódi készülékkel
 ```

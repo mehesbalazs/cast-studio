@@ -366,6 +366,7 @@ START_GRACE = 5.0      # elemváltás után ennyi ideig lehet még az előző el
 STALL_WINDOW = 10.0    # ekkora ablakban nézzük, tart-e a lejátszás a valós idővel
 STALL_RATIO = 0.5      # ennél lassabb haladás már akadozás, nem mérési hiba
 STALL_TELL = 60.0      # ennyinél sűrűbben nem szólunk ugyanarról
+IDEGEN_TURELEM = 10.0  # ennyi ideig hisszük, hogy a készülék még átáll
 
 UPNP_CLASS = {
     'video': 'object.item.videoItem',
@@ -446,6 +447,9 @@ class Player(object):
         self.rate_at = 0.0
         self.stall_report = None     # a szerver akasztja ide a hálózati mérőit
         self.stall_told_at = 0.0
+        self.saw_position = False    # jelentett-e valaha nem nulla állást
+        self.idegen_ota = 0.0        # mióta jelent más fájlt a készülék
+        self.idegen_szolt = False
         self.stall_reported = False  # jeleztük-e már, hogy nem indul be
         self._saved_at = 0.0         # mikor mentettük utoljára a pozíciót
         self.seek_modes = []         # amit a készülék hirdet magáról
@@ -475,6 +479,9 @@ class Player(object):
                 self.resume_to = 0.0
                 self.last_pos = 0.0
                 self.expect_uri = ''
+                self.saw_position = False
+                self.idegen_ota = 0.0
+                self.idegen_szolt = False
                 self.muted = False
                 self.muted_by_us = False
             self.renderer = renderer
@@ -604,6 +611,9 @@ class Player(object):
             self.restart_fixes = 0
             self.seeked_at = 0.0
             self.expect_uri = item['url']
+            self.saw_position = False
+            self.idegen_ota = 0.0
+            self.idegen_szolt = False
             self.stall_reported = False
             self._saved_at = time.time()
 
@@ -630,12 +640,16 @@ class Player(object):
                               ('CurrentURIMetaData', didl)])
         if not ok:
             with self.lock:
+                # A készülék a régit játssza tovább: ha az új elemet várnánk
+                # tőle, minden leolvasást eldobnánk, és vakon maradnánk.
+                self.expect_uri = ''
                 self._jelez('A TV nem fogadta el a fájlt: %s' % resp)
             return False, self.error
 
         ok, resp = self._avt('Play', [('Speed', '1')])
         if not ok:
             with self.lock:
+                self.expect_uri = ''
                 self._jelez('Nem indult el a lejátszás: %s' % resp)
             return False, self.error
 
@@ -966,6 +980,14 @@ class Player(object):
         Visszaadja a (videó mp, valós mp) párost, ha akadozást talált.
         """
         most = time.time() if most is None else most
+        # Van készülék, amelyik egyáltalán nem jelent pozíciót: a RelTime
+        # NOT_IMPLEMENTED, amiből nálunk 0 lesz. Ott a "nem haladt" örökké
+        # igaz lenne, és percenként riasztanánk hibátlan lejátszás közben.
+        # Csak akkor mérünk, ha a készülék EHHEZ az elemhez mutatott már
+        # nem nulla állást.
+        if not self.saw_position:
+            self._rate_reset(pos, most)
+            return None
         # Tekerés és folytatás közben a pozíció ugrál: ilyenkor nincs mit mérni.
         if self.resume_to > 0 or most - self.seeked_at < SEEK_GRACE:
             self._rate_reset(pos, most)
@@ -1019,12 +1041,33 @@ class Player(object):
         nulláját - a kettő közti esést újraindulásnak vettük, és az ÚJ részt
         tekertük a 936. másodpercre. A készülék viszont a GetPositionInfo-ban
         megmondja, melyik fájlnál tart; nem kell találgatni.
+
+        Az eltérést viszont csak IDEGEN_TURELEM ideig magyarázza az átállás.
+        Ha tovább tart - mert a készüléken átváltottak másik bemenetre -, a
+        leolvasást továbbra sem használjuk fel, de nem is hallgatunk róla:
+        némán "lejátszás" alatt befagyott pozíciót mutatni hazugság lenne.
         """
         if not track_uri:
             return False            # nem árulja el - lásd a START_GRACE-t
         with self.lock:
             vart = self.expect_uri
-        return bool(vart) and not _uri_azonos(track_uri, vart)
+            if not vart or _uri_azonos(track_uri, vart):
+                self.idegen_ota = 0.0
+                self.idegen_szolt = False
+                return False
+            most = time.time()
+            if self.idegen_ota <= 0:
+                self.idegen_ota = most
+            if most - self.idegen_ota < IDEGEN_TURELEM:
+                return True         # még átállhat: ez a normális elemváltás
+            if not self.idegen_szolt:
+                self.idegen_szolt = True
+                self.state = 'STOPPED'
+                # Nem mi állítottuk le, de a sort sem szabad emiatt léptetni.
+                self.stopped_by_user = True
+                self._jelez('A TV most nem azt játssza, amit innen indítottunk. '
+                            'Ha átváltottál rajta, indítsd újra a lejátszást.')
+            return True
 
     def _poll_once(self):
         ok, body = self._avt('GetTransportInfo', timeout=5.0)
@@ -1080,6 +1123,8 @@ class Player(object):
                                and time.time() - self.seeked_at > SEEK_GRACE
                                and not frissen_indult)
                 self.last_pos = pos
+                if pos > 0:
+                    self.saw_position = True
                 akadas = self._akadas_meres(pos)
                 if self.resume_to > 0:
                     # Amíg a folytatás nem ért célba, egy pontot sem mentünk: a
