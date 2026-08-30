@@ -855,7 +855,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.dlna_set_queue(payload)
             return self.send_json(404, {'error': 'Ismeretlen végpont.'})
         except Exception as exc:
-            return self.send_json(500, {'error': '%s: %s' % (type(exc).__name__, exc)})
+            # Ugyanaz a szabály, mint a GET ágon: a részletek a konzolra valók.
+            # A válaszba írva abszolút utak és belső adatok szivárognának ki -
+            # ráadásul a naplóból pont az hiányozna, ami a hibakereséshez kell.
+            OUT.error('Kérés közben hiba: %s: %s' % (type(exc).__name__, exc))
+            return self.send_json(500, {'error': 'Váratlan hiba a kiszolgálóban.'})
 
     def route(self):
         parsed = urlparse(self.path)
@@ -1045,6 +1049,9 @@ class Handler(BaseHTTPRequestHandler):
                     sub = media_url(sp, base, '/api/sub')
                     break
 
+            cim = raw.get('title')
+            if not isinstance(cim, str) or not cim.strip():
+                cim = os.path.splitext(os.path.basename(path))[0]
             mime = MIME.get(ext, 'application/octet-stream')
             kind = kind_of(ext)
             endpoint = '/api/media'
@@ -1058,7 +1065,9 @@ class Handler(BaseHTTPRequestHandler):
                 'path': path,
                 'size': meret,                   # a bájt alapú tekeréshez kell
                 'name': os.path.basename(path),
-                'title': raw.get('title') or os.path.splitext(os.path.basename(path))[0],
+                # Csak sztring mehet tovább: a DIDL-metaadat XML-escape-je
+                # minden másra AttributeError-t dobna, és a kérés 500-assá válna.
+                'title': cim,
                 'kind': kind,
                 'mime': mime,
                 'url': media_url(path, base, endpoint),

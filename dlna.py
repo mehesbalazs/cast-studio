@@ -11,7 +11,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from urllib.parse import urljoin, urlparse, unquote
+from urllib.parse import urljoin, urlparse, unquote, parse_qs
 from xml.sax.saxutils import escape as xesc
 from xml.sax.saxutils import unescape as xunesc
 
@@ -32,14 +32,19 @@ def _tag(xml, name):
 
 
 def _uri_mag(u):
-    """Az URL azonosító része: útvonal + lekérdezés, gépnév és port nélkül."""
+    """Az URL azonosító része: útvonal + lekérdezés, gépnév és port nélkül.
+
+    A lekérdezést elemezve adjuk vissza, nem nyersen dekódolva: a dekódolás
+    összemosná a paraméterhatárt egy '&' jelet tartalmazó fájlnévvel.
+    """
     try:
         r = urlparse(u)
     except ValueError:
-        return ''
+        return None
     if not r.path:
-        return ''
-    return unquote(r.path) + '?' + unquote(r.query)
+        return None
+    return (unquote(r.path),
+            tuple(sorted(parse_qs(r.query, keep_blank_values=True).items())))
 
 
 def _uri_azonos(a, b):
@@ -55,10 +60,12 @@ def _uri_azonos(a, b):
         return True
     entitasok = {'&quot;': '"', '&apos;': "'"}
     a, b = xunesc(a, entitasok), xunesc(b, entitasok)
-    if a == b or unquote(a) == unquote(b):
+    if a == b:
         return True
+    # Az újrakódolt útvonalat és a más gépnevet is ez fedi le: a `path=`
+    # paraméter elemzett értéke dönt.
     mag = _uri_mag(a)
-    return bool(mag) and mag == _uri_mag(b)
+    return mag is not None and mag == _uri_mag(b)
 
 
 def _outbound_ip(target='8.8.8.8'):
@@ -383,6 +390,8 @@ STALL_WINDOW = 10.0    # ekkora ablakban nézzük, tart-e a lejátszás a valós
 STALL_RATIO = 0.5      # ennél lassabb haladás már akadozás, nem mérési hiba
 STALL_TELL = 60.0      # ennyinél sűrűbben nem szólunk ugyanarról
 IDEGEN_TURELEM = 10.0  # ennyi ideig hisszük, hogy a készülék még átáll
+STALL_GAP = 30.0       # ennél hosszabb ablakból leolvasások maradtak ki
+STOP_CONFIRM = 2       # ennyi egybehangzó leolvasás kell a sor léptetéséhez
 
 UPNP_CLASS = {
     'video': 'object.item.videoItem',
@@ -461,6 +470,7 @@ class Player(object):
         self.expect_uri = ''         # melyik fájlt indítottuk el a készüléken
         self.rate_pos = 0.0          # ettől a ponttól mérjük, halad-e a kép
         self.rate_at = 0.0
+        self.stop_hits = 0        # hány egybehangzó leolvasás mondja, hogy vége
         self.stall_report = None     # a szerver akasztja ide a hálózati mérőit
         self.stall_told_at = 0.0
         self.saw_position = False    # jelentett-e valaha nem nulla állást
@@ -498,6 +508,9 @@ class Player(object):
                 self.saw_position = False
                 self.idegen_ota = 0.0
                 self.idegen_szolt = False
+                self.rate_pos = 0.0
+                self.rate_at = 0.0
+                self.stop_hits = 0
                 self.muted = False
                 self.muted_by_us = False
             self.renderer = renderer
@@ -560,7 +573,10 @@ class Player(object):
         if not ok:
             return False
         current = _tag(body, 'CurrentURI')
-        if not current or current != item['url']:
+        # Nyers szövegegyezés itt sem elég: a válasz XML, tehát a tokenes URL
+        # '&' jele '&amp;'-ként érkezik - vagyis alapbeállítással SOHA nem
+        # egyezne, és kilépéskor sosem állítanánk meg a készüléket.
+        if not current or not _uri_azonos(current, item['url']):
             return False            # már nem a mi felvételünk megy
         self.remember_now()        # kilépés előtt jegyezzük meg, hol tartunk
         ok, _ = soap(r['avtransport'], AVT, 'Stop', [('InstanceID', 0)], timeout=3.0)
@@ -630,6 +646,9 @@ class Player(object):
             self.saw_position = False
             self.idegen_ota = 0.0
             self.idegen_szolt = False
+            self.rate_pos = 0.0
+            self.rate_at = 0.0
+            self.stop_hits = 0
             self.stall_reported = False
             self._saved_at = time.time()
 
@@ -1016,6 +1035,11 @@ class Player(object):
             return None
         haladt = pos - self.rate_pos
         self._rate_reset(pos, most)
+        if eltelt > STALL_GAP:
+            # Kimaradtak leolvasások: idegen tartalom ment a készüléken, nem
+            # válaszolt, vagy elaludt a gép. Ilyenkor a "nem haladt" nem a
+            # lejátszásról szól - és percekben mért abszurd számot írnánk ki.
+            return None
         # A negatív haladás újraindulás, azt a visszaesés-figyelő intézi.
         if 0 <= haladt < eltelt * STALL_RATIO:
             return (haladt, eltelt)
@@ -1118,7 +1142,6 @@ class Player(object):
         remember = None
         akadas = None
         with self.lock:
-            prev = self.state
             self.state = state
             self.position = pos
             if dur > 0:
@@ -1211,11 +1234,18 @@ class Player(object):
                             % name)
 
             # Vége az elemnek: játszott, most megállt, és nem mi állítottuk le.
+            # Egyetlen leolvasás viszont kevés: a készülékek lejátszás közben is
+            # jelentenek pillanatnyi STOPPED-ot, a léptetés pedig visszafordít-
+            # hatatlan - törli azt a pontot, ahonnan folytatnál, és átugrik a
+            # következő részre. Ezért két egybehangzó leolvasás kell hozzá.
             settled = time.time() - self.started_at > 4.0
             if (state in ('STOPPED', 'NO_MEDIA_PRESENT') and self.saw_playing
-                    and settled and not self.stopped_by_user
-                    and prev in ('PLAYING', 'TRANSITIONING',
-                                 'PAUSED_PLAYBACK')):
+                    and settled and not self.stopped_by_user):
+                self.stop_hits += 1
+            else:
+                self.stop_hits = 0
+            if self.stop_hits >= STOP_CONFIRM:
+                self.stop_hits = 0
                 advance = True
 
         if akadas:

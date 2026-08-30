@@ -310,6 +310,15 @@ Ezért az app megjegyzi a célt, és ellenőrzi, hogy tényleg odaért-e:
 - ha végleg nem sikerül, kiírja, és a mentett pontot **akkor sem írja felül**,
   amíg a lejátszás túl nem jutott rajta.
 
+### Mikor van vége egy elemnek
+
+A sor léptetéséhez **két egybehangzó leolvasás** kell. Egy elem vége
+visszafordíthatatlan esemény: törli a megtekintési pontot, és elindítja a
+következő részt. A készülékek viszont lejátszás közben is jelentenek
+pillanatnyi `STOPPED`-ot - egyetlen ilyenre lépni azt jelentené, hogy egy
+üzemzavar elveszi azt a pontot, ahonnan folytatnál. A vége így 1,2 másodperccel
+később derül ki; cserébe nem lehet véletlenül elveszíteni semmit.
+
 ### Váratlan újraindulás
 
 Előfordul, hogy a készülék magától visszaugrik a fájl elejére – mérve: tekerés
@@ -597,7 +606,10 @@ véletlenszerű ponton.
 
 A `--keep-playing` kapcsolóval a pufferelt rész lemehet. Kilépés előtt az app
 ellenőrzi (`GetMediaInfo`), hogy tényleg az általa indított tartalom megy-e: ha
-közben a készüléken másra váltottak, nem nyúl hozzá.
+közben a készüléken másra váltottak, nem nyúl hozzá. Az összehasonlítás itt is
+az útvonalra és a lekérdezésre épül, nem nyers szövegegyezésre - a válasz XML,
+tehát a tokenes URL `&` jele `&amp;`-ként érkezik, és nyersen összevetve
+alapbeállítással **soha** nem egyezne, vagyis kilépéskor sosem állna meg a kép.
 
 ---
 
@@ -639,8 +651,8 @@ A `devtools/` mappában négy eszköz van; az app működéséhez egyik sem kell
 mappa törölhető. Részletek: [`devtools/README.md`](devtools/README.md).
 
 ```bash
-python3 devtools/logictest.py          # 46 ellenőrzés, TV nélkül
-python3 devtools/apitest.py            # 26 ellenőrzés, TV nélkül
+python3 devtools/logictest.py          # 51 ellenőrzés, TV nélkül
+python3 devtools/apitest.py            # 28 ellenőrzés, TV nélkül
 python3 devtools/faketv.py --port 8475 # hamis DLNA-készülék a hálózatra
 python3 devtools/selftest.py <mappa>   # 16 ellenőrzés valódi készülékkel
 ```

@@ -37,6 +37,7 @@ konzol_utf8()
 # Az app egy szinttel feljebb van: ez a mappa csak a fejlesztői eszközöké.
 APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = 8479
+FAKE_UDN = 'uuid:faketv-0000-0000-0000-000000000001'
 OK, BAD = [], []
 
 
@@ -168,16 +169,30 @@ def main():
         fh.write('1\n00:00:01,000 --> 00:00:02,000\nSzia, világ!\n'.encode('utf-16'))
 
     print('\n  A HTTP-réteg önellenőrzése (TV nélkül)\n')
+    # A lejátszási sor ellenőrzései csak akkor érnek valamit, ha VAN kiválasztott
+    # készülék: enélkül a szerver 409-cel visszafordul a validáció ELŐTT, és a
+    # próbák némán semmit sem bizonyítanak. Ezért a hamis TV-t indítjuk mellé.
+    # Rögzített UDN-nel választjuk ki, hogy egy valódi készülékhez véletlenül
+    # se nyúljunk hozzá, ha épp be van kapcsolva a hálózaton.
+    hamis = subprocess.Popen(
+        [sys.executable, '-u', os.path.join(APP, 'devtools', 'faketv.py'),
+         '--port', '8477', '--udn', FAKE_UDN, '--no-fetch'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     srv = subprocess.Popen(
         [sys.executable, '-u', os.path.join(APP, 'server.py'),
          '--root', root, '--port', str(PORT), '--no-token', '--no-open',
          '--verbose', '--data', adat],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    q = urllib.parse.quote
     try:
-        time.sleep(2.5)
+        time.sleep(3.0)
         say(req('/api/info')[0] == 200, 'a szerver válaszol')
 
-        q = urllib.parse.quote
+        req('/api/dlna/discover?timeout=6', timeout=40)
+        c, _ = req('/api/dlna/select?udn=' + q(FAKE_UDN, safe=''), timeout=30)
+        say(c == 200, 'a hamis TV kiválasztható (enélkül a sor-próbák vakok)',
+            'HTTP %s' % c)
+
         # -- fájlkiszolgálás -------------------------------------------
         say(req('/api/media?path=' + q(tilos, safe=''))[0] == 404,
             'olvashatatlan fájl 404, nem üres 200')
@@ -194,9 +209,25 @@ def main():
                  ('items nem lista', '/api/dlna/queue', {'items': 'x'}),
                  ('szemét elemek', '/api/dlna/queue', {'items': [None, 1, 'x']}),
                  ('rossz subs', '/api/dlna/queue',
-                  {'items': [{'path': os.path.join(root, 'ok.mp4'), 'subs': [7]}]})]
+                  {'items': [{'path': os.path.join(root, 'ok.mp4'), 'subs': [7]}]}),
+                 # A cím a DIDL-metaadatba kerül, ahol XML-escape megy rá:
+                 # nem sztringre AttributeError, és 500-as lenne a válasz.
+                 ('objektum cím', '/api/dlna/queue',
+                  {'items': [{'path': os.path.join(root, 'ok.mp4'),
+                              'title': {'x': 1}}]}),
+                 ('lista cím', '/api/dlna/queue',
+                  {'items': [{'path': os.path.join(root, 'ok.mp4'),
+                              'title': [1, 2]}]})]
         baj = [n for n, u, b in rossz if req(u, b)[0] >= 500]
         say(not baj, 'hibás lejátszási sor nem szerverhiba', ', '.join(baj) or 'mind 4xx')
+
+        # Ha mégis átcsúszna valami, a válasz akkor sem tartalmazhat abszolút
+        # utat vagy kivételszöveget: az a konzolra való.
+        szivargas = [n for n, u, b in rossz
+                     for st, d in [req(u, b)]
+                     if st >= 500 or '/Users' in d or 'Error' in d]
+        say(not szivargas, 'a hibaválasz nem szivárogtat belső részletet',
+            ', '.join(szivargas) or 'egyik sem')
 
         szamok = ['/api/dlna/volume?level=inf', '/api/dlna/volume?level=1e400',
                   '/api/dlna/volume?level=abc', '/api/dlna/seek?to=nan',
@@ -308,6 +339,11 @@ def main():
         say(req('/api/browse?path=' + q(el, safe=''))[0] == 404,
             'eltűnt mappa 404, nem 500')
     finally:
+        hamis.terminate()
+        try:
+            hamis.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            hamis.kill()
         srv.terminate()
         try:
             napló = srv.communicate(timeout=10)[0].decode('utf-8', 'replace')

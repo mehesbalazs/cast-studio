@@ -15,8 +15,8 @@ python3 devtools/selftest.py <médiamappa>
 
 | eszköz | mit mér | kell hozzá készülék? |
 |---|---|---|
-| `logictest.py` | 46 ellenőrzés: állapotgép, folytatás, ütközések, némítás, elemváltás, akadozás, idegen tartalom | nem |
-| `apitest.py` | 26 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság, platformfüggés, forgalom, feliratkódolás | nem |
+| `logictest.py` | 51 ellenőrzés: állapotgép, folytatás, ütközések, némítás, elemváltás, akadozás, idegen tartalom | nem |
+| `apitest.py` | 28 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság, platformfüggés, forgalom, feliratkódolás | nem |
 | `faketv.py` | hamis DLNA-készülék a hálózaton | nem |
 | `selftest.py` | 16 ellenőrzés: a teljes lánc valódi TV-vel és valódi fájllal | **igen** |
 
@@ -67,6 +67,7 @@ A készülék viselkedése forgatókönyvenként állítható:
 | `idegen_uri=…` | mást jelent, mint amit elindítottunk (a TV-n átváltottak) |
 | `nincs_pozicio=True` | `RelTime = NOT_IMPLEMENTED`: sosem jelent pozíciót |
 | `uri_atir=True` | átírja a kapott cím gépnevét, ahogy egyes készülékek |
+| `hamis_stop=True` | egyetlen leolvasásra `STOPPED`-ot hazudik, közben megy tovább |
 
 Amit lefed: folytatás háromféle készüléken · a mentett pont védelme ·
 feladás és értesítés · felhasználói felülbírálás · váratlan újraindulás ·
@@ -79,7 +80,10 @@ elemváltás, léptetés, végignézett elem).
 ## `apitest.py` – a HTTP-réteg önellenőrzése
 
 Elindítja a valódi `server.py`-t ideiglenes gyökérrel és külön
-állapotmappával, majd kívülről méri:
+állapotmappával, **és mellé a hamis TV-t** - enélkül a szerver minden
+sor-kérésre `409`-cel visszafordulna a validáció ELŐTT, és a próbák némán
+semmit sem bizonyítanának. A hamis készüléket rögzített UDN-nel választja ki,
+hogy egy bekapcsolt valódi TV-hez véletlenül se nyúljon. Ezután kívülről méri:
 
 - fájlkiszolgálás: olvashatatlan és nulla bájtos fájl, gyökéren kívüli út;
 - hibás bemenetek: rossz típusú JSON-törzs, képtelen számok (`inf`, `nan`),

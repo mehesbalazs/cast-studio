@@ -68,6 +68,7 @@ class MockTV(dlna.Player):
         self.idegen_uri = ''                 # mást jelent, mint amit indítottunk
         self.nincs_pozicio = False           # RelTime = NOT_IMPLEMENTED
         self.uri_atir = False                # átírja a kapott cím gépnevét
+        self.hamis_stop = False              # egy leolvasásra STOPPED-ot hazudik
         self.seeks = []
         self.tv_uri = ''
         self.tv_volume = 22
@@ -122,8 +123,13 @@ class MockTV(dlna.Player):
                     self.tv_started = time.time()
                 if self.tv_state == 'PLAYING' and self.tv_pos >= self.tv_duration:
                     self.tv_state, self.tv_pos = 'STOPPED', 0.0
+                jelent = self.tv_state
+                if self.hamis_stop:
+                    # Egyetlen leolvasásra hazudik: a lejátszás megy tovább.
+                    self.hamis_stop = False
+                    jelent = 'STOPPED'
                 return True, ('<CurrentTransportState>%s</CurrentTransportState>'
-                              % self.tv_state), ''
+                              % jelent), ''
             if action == 'GetPositionInfo':
                 # A valódi készülék XML-t ad vissza, tehát a tokenes URL '&'
                 # jele '&amp;'-ként érkezik - a teszt is így adja.
@@ -471,6 +477,68 @@ def main():
     p.shutdown()
     say(p.index == 1, 'idegen tartalom után is lép a sor a rész végén',
         'index=%d' % p.index)
+
+    print('\n  Téves megállás és kimaradt leolvasások')
+
+    # Egyetlen pillanatnyi STOPPED nem jelenthet elemvéget: a léptetés törli a
+    # mentett pontot és átugrik a következő részre - visszafordíthatatlanul.
+    st = Store()
+    p = player(st)
+    p.set_queue([dict(A), dict(B)], 0)
+    run(p, 4.0)
+    p.hamis_stop = True
+    run(p, 4.0)
+    p.shutdown()
+    say(p.index == 0, 'egyetlen téves STOPPED nem lépteti a sort',
+        'index=%d' % p.index)
+
+    # Kimaradt leolvasások után (idegen tartalom, nem válaszoló készülék, alvó
+    # gép) a hosszú ablakból nem lehet tempóra következtetni.
+    q = dlna.Player()
+    q.seeked_at = -1000.0
+    q.saw_position = True
+    # Az óra nem indulhat nulláról: a rate_at <= 0 ág elvinné a próbát anélkül,
+    # hogy a mérés egyáltalán lefutna.
+    q._akadas_meres(100.0, most=1000.0)             # ablak nyitása
+    hosszu = q._akadas_meres(100.0, most=1400.0)    # 400 mp kimaradás, nulla haladás
+    say(hosszu is None, 'hosszú kimaradás után nem riaszt',
+        'kapott: %s' % (hosszu,))
+
+    szokasos = q._akadas_meres(100.0, most=1411.0)  # szokásos ablak, nulla haladás
+    say(szokasos is not None, 'a szokásos ablakban viszont riaszt',
+        'kapott: %s' % (szokasos,))
+
+    # A paraméterhatárt nem szabad összemosni: az 'x&t=y' nevű fájl nem
+    # ugyanaz, mint az 'x' nevű fájl 'y' tokennel.
+    say(not dlna._uri_azonos('http://h/m?path=x%26t%3Dy', 'http://h/m?path=x&t=y'),
+        'a paraméterhatárt nem mossa össze', 'kódolt & vs. valódi &')
+
+    # Kilépéskor a készüléket meg kell állítani - de csak ha tényleg a mi
+    # tartalmunk megy. A készülék XML-t ad vissza, tehát a tokenes URL '&' jele
+    # '&amp;'-ként érkezik: nyers szövegegyezéssel sosem ismernénk fel.
+    st = Store()
+    p = player(st)
+    p.set_queue([dict(A)], 0)
+    run(p, 3.0)
+    p.shutdown()
+    hivasok = []
+
+    def hamis_soap(url, service, action, args=None, timeout=8.0, with_code=False):
+        hivasok.append(action)
+        if action == 'GetMediaInfo':
+            return True, ('<CurrentURI>%s</CurrentURI>'
+                          % A['url'].replace('&', '&amp;'))
+        return True, ''
+
+    eredeti_soap = dlna.soap
+    dlna.soap = hamis_soap
+    try:
+        allitott = p.stop_if_ours()
+    finally:
+        dlna.soap = eredeti_soap
+    say(allitott and 'Stop' in hivasok,
+        'kilépéskor a tokenes URL mellett is megállítja a TV-t',
+        'hívások: %s' % (hivasok or 'nincs'))
 
     print('\n  Elemváltás: a készülék még az előzőt jelenti')
 
