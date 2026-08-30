@@ -16,7 +16,7 @@ python3 devtools/selftest.py <médiamappa>
 | eszköz | mit mér | kell hozzá készülék? |
 |---|---|---|
 | `logictest.py` | 51 ellenőrzés: állapotgép, folytatás, ütközések, némítás, elemváltás, akadozás, idegen tartalom | nem |
-| `apitest.py` | 29 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság, platformfüggés, forgalom, feliratkódolás | nem |
+| `apitest.py` | 30 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság, platformfüggés, forgalom, feliratkódolás | nem |
 | `faketv.py` | hamis DLNA-készülék a hálózaton | nem |
 | `selftest.py` | 16 ellenőrzés: a teljes lánc valódi TV-vel és valódi fájllal | **igen** |
 
@@ -94,7 +94,8 @@ hogy egy bekapcsolt valódi TV-hez véletlenül se nyúljon. Ezután kívülről
   pozíciómentés nem avítja el a megnyitott lapok revízióját;
 - eltűnő mappa `404`-et ad, nem `500`-at;
 - forgalommérés: a kiszolgált fájl és az átkódolt adás is beleszámít;
-- feliratkódolás: BOM-os (UTF-16) fájl is olvashatóan jön ki;
+- felirat: BOM-os (UTF-16) fájl olvashatóan jön ki, és az egy számjegyű
+  órás időbélyeg is érvényes WebVTT lesz;
 - a futás végén a szerver naplójában egyetlen kivétel sem lehet;
 - platformfüggés: nem UTF-8 kódlapon sem vész el ékezetes kiírás, más
   meghajtón lévő állapotfájl nem állítja meg az indulást, és a hamis TV

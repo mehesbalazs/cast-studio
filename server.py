@@ -537,10 +537,25 @@ def scan_recursive(path, show_hidden=False, max_files=3000, max_depth=8):
     return out, False
 
 
+# Az időbélyeg-sorok átírásához. A WebVTT tizedespontot vár vessző helyett, és
+# az óramezőt legalább két számjegyen: a '0:00:01,000' alak - amit több
+# feliratszerkesztő is így ír ki - mindkét szabályt sérti, a lejátszó pedig
+# némán eldobja az egész feliratot.
+IDO_RE = re.compile(r'(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})')
+
+
+def _vtt_ido(m):
+    return '%02d:%s:%s.%s' % (int(m.group(1)), m.group(2), m.group(3),
+                              m.group(4).ljust(3, '0'))
+
+
 def srt_to_vtt(text):
     text = text.lstrip('﻿').replace('\r\n', '\n').replace('\r', '\n')
-    text = re.sub(r'(\d{2}:\d{2}:\d{2}),(\d{3})', r'\1.\2', text)
-    return 'WEBVTT\n\n' + text
+    # Csak az időzítő sorokat írjuk át: a feliratszövegben is állhat olyan szám,
+    # ami időbélyegnek látszik.
+    sorok = [IDO_RE.sub(_vtt_ido, sor) if '-->' in sor else sor
+             for sor in text.split('\n')]
+    return 'WEBVTT\n\n' + '\n'.join(sorok)
 
 
 # A BOM-os kódolásokat előre le kell kezelni. A cp1250 ugyanis szinte minden

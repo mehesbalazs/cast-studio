@@ -517,6 +517,13 @@ menet közben WebVTT-re konvertálódik a `/api/sub` végponton.
 A külső feliratot minden gyártó máshogy kezeli, és sok készüléken nem
 megbízható. Ha nem jelenik meg, a fájlba ágyazott feliratsáv a biztos megoldás.
 
+**Időbélyegek.** A WebVTT tizedespontot vár vessző helyett, és az óramezőt
+legalább két számjegyen. A `0:00:01,000` alak – amit több feliratszerkesztő is
+így ír ki – mindkettőt sérti, és a lejátszó ilyenkor **némán, hibaüzenet nélkül
+elhagyja az egész feliratot**. Az app ezért az időzítő sorokat átírja, az órát
+kiegészíti, az ezredmásodpercet feltölti. Csak a `-->` jelet tartalmazó sorokat
+bántja: a feliratszövegben is állhat időbélyegnek látszó szám.
+
 **Kódolás.** A magyar feliratok ritkán UTF-8-ak. Az app előbb a bájtsorrend-jelet
 (BOM) nézi meg, és csak utána próbálkozik sorban: `utf-8` → `cp1250` →
 `iso-8859-2`. A sorrend nem cserélhető fel, és a BOM-vizsgálat sem hagyható ki:
@@ -652,7 +659,7 @@ mappa törölhető. Részletek: [`devtools/README.md`](devtools/README.md).
 
 ```bash
 python3 devtools/logictest.py          # 51 ellenőrzés, TV nélkül
-python3 devtools/apitest.py            # 29 ellenőrzés, TV nélkül
+python3 devtools/apitest.py            # 30 ellenőrzés, TV nélkül
 python3 devtools/faketv.py --port 8475 # hamis DLNA-készülék a hálózatra
 python3 devtools/selftest.py <mappa>   # 16 ellenőrzés valódi készülékkel
 ```

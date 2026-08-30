@@ -167,6 +167,11 @@ def main():
     # A felső indexű '²' isdigit(), de int()-re hibát dob: egy ilyen nevű mappa
     # a rendezésnél elhasalt, és az egész könyvtár 500-assá vált.
     os.makedirs(os.path.join(root, '100²'), exist_ok=True)
+    # Több feliratszerkesztő egy számjegyű órát ír: a WebVTT ezt elutasítja,
+    # és a lejátszó némán feliratok nélkül marad.
+    egyjegyu = os.path.join(root, 'ora.srt')
+    with open(egyjegyu, 'w', encoding='utf-8') as fh:
+        fh.write('1\n0:00:01,000 --> 0:00:04,000\nSzia\n')
     utf16 = os.path.join(root, 'felirat.srt')
     with open(utf16, 'wb') as fh:
         fh.write('1\n00:00:01,000 --> 00:00:02,000\nSzia, világ!\n'.encode('utf-16'))
@@ -306,6 +311,12 @@ def main():
         say(c == 200 and 'Szia, világ!' in d and '\x00' not in d,
             'UTF-16-os felirat olvashatóan jön ki',
             'HTTP %s, %s' % (c, 'NUL a szövegben' if '\x00' in d else 'tiszta'))
+
+        c, d = req('/api/sub?path=' + q(egyjegyu, safe=''))
+        sorok = d.split('\n')
+        say(c == 200 and '00:00:01.000 --> 00:00:04.000' in d,
+            'egy számjegyű órás felirat is érvényes WebVTT lesz',
+            'HTTP %s, %s' % (c, sorok[3] if len(sorok) > 3 else d[:40]))
 
         # -- forgalommérés: mindkét kiszolgáló út beleszámít -----------
         def forgalom():
