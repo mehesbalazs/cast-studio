@@ -70,6 +70,7 @@ class MockTV(dlna.Player):
         self.nincs_pozicio = False           # RelTime = NOT_IMPLEMENTED
         self.uri_atir = False                # átírja a kapott cím gépnevét
         self.hamis_stop = False              # egy leolvasásra STOPPED-ot hazudik
+        self.poz_hiba = 0                    # ennyi GetPositionInfo hívás bukik el
         self.seeks = []
         self.tv_uri = ''
         self.tv_volume = 22
@@ -131,6 +132,11 @@ class MockTV(dlna.Player):
                     jelent = 'STOPPED'
                 return True, ('<CurrentTransportState>%s</CurrentTransportState>'
                               % jelent), ''
+            if action == 'GetPositionInfo' and self.poz_hiba > 0:
+                # Az állapot-lekérdezés megy, ez az egy nem: valódi
+                # készülékeknél is előfordul terhelés alatt.
+                self.poz_hiba -= 1
+                return False, 'A TV nem válaszolt időben.', ''
             if action == 'GetPositionInfo':
                 # A valódi készülék XML-t ad vissza, tehát a tokenes URL '&'
                 # jele '&amp;'-ként érkezik - a teszt is így adja.
@@ -542,6 +548,25 @@ def main():
     say(allitott and 'Stop' in hivasok,
         'kilépéskor a tokenes URL mellett is megállítja a TV-t',
         'hívások: %s' % (hivasok or 'nincs'))
+
+    # Ha az állapot megjön, de a pozíció nem, a nullát nem szabad elhinni:
+    # a felületen nullára ugrana a csúszka, a visszaesés-figyelő pedig
+    # újraindulást látna ott, ahol csak egy lekérdezés hasalt el.
+    st = Store()
+    p = player(st)
+    p.set_queue([dict(A)], 0)
+    run(p, 8.0)                       # ~80 virtuális mp-ig eljut
+    p.seeks = []
+    p.poz_hiba = 4                    # négy lekérdezés elbukik egymás után
+    mintak = []
+    vege = time.time() + 2.5
+    while time.time() < vege:
+        mintak.append(p.position)
+        time.sleep(0.03)
+    p.shutdown()
+    say(mintak and min(mintak) > 0 and not p.seeks,
+        'elbukott pozíció-lekérdezés nem nullázza a jelzett állást',
+        'legkisebb=%.0f mp, tekerés=%s' % (min(mintak or [0]), p.seeks or 'nincs'))
 
     print('\n  Elemváltás: a készülék még az előzőt jelenti')
 

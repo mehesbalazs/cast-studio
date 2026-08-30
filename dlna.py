@@ -1126,12 +1126,17 @@ class Player(object):
         state = _tag(body, 'CurrentTransportState') or 'STOPPED'
 
         ok, body = self._avt('GetPositionInfo', timeout=5.0)
-        pos = dur = 0.0
-        track_uri = ''
-        if ok:
-            pos = hms_to_seconds(_tag(body, 'RelTime'))
-            dur = hms_to_seconds(_tag(body, 'TrackDuration'))
-            track_uri = _tag(body, 'TrackURI') or ''
+        if not ok:
+            # Az állapot megvan, a pozíció nem. A nullát elhinni a legrosszabb,
+            # amit tehetnénk: pontosan úgy néz ki, mint egy magától elölről
+            # induló készülék, és fölösleges visszatekerést váltana ki - épp
+            # azt az akadozást okozva, ami ellen a figyelő készült.
+            with self.lock:
+                self.state = state
+            return
+        pos = hms_to_seconds(_tag(body, 'RelTime'))
+        dur = hms_to_seconds(_tag(body, 'TrackDuration'))
+        track_uri = _tag(body, 'TrackURI') or ''
 
         if self._mas_elemrol_szol(track_uri):
             # Nem a mi elemünkről szól: egyetlen mezőt sem szabad róla írni.
