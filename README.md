@@ -652,7 +652,7 @@ mappa törölhető. Részletek: [`devtools/README.md`](devtools/README.md).
 
 ```bash
 python3 devtools/logictest.py          # 51 ellenőrzés, TV nélkül
-python3 devtools/apitest.py            # 28 ellenőrzés, TV nélkül
+python3 devtools/apitest.py            # 29 ellenőrzés, TV nélkül
 python3 devtools/faketv.py --port 8475 # hamis DLNA-készülék a hálózatra
 python3 devtools/selftest.py <mappa>   # 16 ellenőrzés valódi készülékkel
 ```

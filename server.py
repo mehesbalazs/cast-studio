@@ -71,8 +71,14 @@ NUM_RE = re.compile(r'(\d+)')
 
 
 def natkey(name):
-    """Természetes rendezés: 'S01E02' < 'S01E10'."""
-    return [int(p) if p.isdigit() else p.lower() for p in NUM_RE.split(name)]
+    """Természetes rendezés: 'S01E02' < 'S01E10'.
+
+    Csak tizedes számjegyből csinálunk számot. Az isdigit() a felső indexű
+    '²'-re is igazat ad, az int() viszont hibát dob rá - egy '100²' nevű mappa
+    így az egész könyvtárat böngészhetetlenné tette (500-as válasz). A \d+
+    mintával kivágott darabok mindig tizedesek, tehát ez sosem hasal el.
+    """
+    return [int(p) if p.isdecimal() else p.lower() for p in NUM_RE.split(name)]
 
 
 def kind_of(ext):

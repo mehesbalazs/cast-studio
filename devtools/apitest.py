@@ -164,6 +164,9 @@ def main():
     open(ures, 'wb').close()
     # Ahogy a Notepad menti "Unicode"-ként: a cp1250 ezt is "sikeresen"
     # dekódolná, csupa NUL-lal tűzdelt olvashatatlan szöveggé.
+    # A felső indexű '²' isdigit(), de int()-re hibát dob: egy ilyen nevű mappa
+    # a rendezésnél elhasalt, és az egész könyvtár 500-assá vált.
+    os.makedirs(os.path.join(root, '100²'), exist_ok=True)
     utf16 = os.path.join(root, 'felirat.srt')
     with open(utf16, 'wb') as fh:
         fh.write('1\n00:00:01,000 --> 00:00:02,000\nSzia, világ!\n'.encode('utf-16'))
@@ -202,6 +205,11 @@ def main():
             'gyökéren kívülre nem enged')
         say(req('/')[0] == 200 and req('/index.html')[0] == 200,
             'a felület kiszolgálható')
+        c1, _ = req('/api/browse?path=' + q(root, safe=''))
+        c2, _ = req('/api/scan?path=' + q(root, safe=''))
+        say(c1 == 200 and c2 == 200,
+            'a különös nevű mappa nem teszi böngészhetetlenné a könyvtárat',
+            'browse %s, scan %s' % (c1, c2))
 
         # -- hibás bemenetek: 4xx, ne 500 ------------------------------
         rossz = [('tömb törzs', '/api/dlna/queue', [1, 2, 3]),

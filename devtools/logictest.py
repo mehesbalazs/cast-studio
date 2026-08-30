@@ -20,6 +20,7 @@ sys.dont_write_bytecode = True
 # Az app egy szinttel feljebb van: ez a mappa csak a fejlesztői eszközöké.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import dlna                                             # noqa: E402
+import server                                           # noqa: E402
 
 
 def konzol_utf8():
@@ -201,7 +202,9 @@ class MockTV(dlna.Player):
 class Store:
     """A server.py mentési szabályainak mása, memóriában."""
 
-    RESUME_MIN, RESUME_TAIL = 20.0, 45.0
+    # A valódi értékeket vesszük át: lemásolva egy későbbi hangolás után
+    # a próba némán mást ellenőrizne, mint amit az app csinál.
+    RESUME_MIN, RESUME_TAIL = server.RESUME_MIN, server.RESUME_TAIL
 
     def __init__(self, initial=None):
         self.pos = dict(initial or {})

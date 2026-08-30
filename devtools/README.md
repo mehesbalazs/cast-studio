@@ -16,7 +16,7 @@ python3 devtools/selftest.py <médiamappa>
 | eszköz | mit mér | kell hozzá készülék? |
 |---|---|---|
 | `logictest.py` | 51 ellenőrzés: állapotgép, folytatás, ütközések, némítás, elemváltás, akadozás, idegen tartalom | nem |
-| `apitest.py` | 28 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság, platformfüggés, forgalom, feliratkódolás | nem |
+| `apitest.py` | 29 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság, platformfüggés, forgalom, feliratkódolás | nem |
 | `faketv.py` | hamis DLNA-készülék a hálózaton | nem |
 | `selftest.py` | 16 ellenőrzés: a teljes lánc valódi TV-vel és valódi fájllal | **igen** |
 
