@@ -310,6 +310,18 @@ Ezért az app megjegyzi a célt, és ellenőrzi, hogy tényleg odaért-e:
 - ha végleg nem sikerül, kiírja, és a mentett pontot **akkor sem írja felül**,
   amíg a lejátszás túl nem jutott rajta.
 
+### Amit a készülék válaszából nem szabad elhinni
+
+A lekérdezés két hívásból áll: az állapoté és a pozícióé. Terhelés alatt
+előfordul, hogy az egyik megjön, a másik nem. A hiányzó pozíciót **nem szabad
+nullaként érteni** - a felületen nullára ugrana a csúszka, a visszaesés-figyelő
+pedig újraindulást látna ott, ahol csak egy hívás hasalt el. Sikertelen
+pozíció-lekérdezésre az app csak az állapotot frissíti.
+
+Ugyanez a szabály másutt is: a `TrackURI`-t a `path=` paraméter alapján
+hasonlítjuk (a gépnév és a kódolás nem azonosít), a `GetMediaInfo` válaszát
+kilépéskor szintén, és az elem végéhez két egybehangzó leolvasás kell.
+
 ### Mikor van vége egy elemnek
 
 A sor léptetéséhez **két egybehangzó leolvasás** kell. Egy elem vége
@@ -658,8 +670,8 @@ A `devtools/` mappában négy eszköz van; az app működéséhez egyik sem kell
 mappa törölhető. Részletek: [`devtools/README.md`](devtools/README.md).
 
 ```bash
-python3 devtools/logictest.py          # 51 ellenőrzés, TV nélkül
-python3 devtools/apitest.py            # 30 ellenőrzés, TV nélkül
+python3 devtools/logictest.py          # 52 ellenőrzés, TV nélkül
+python3 devtools/apitest.py            # 32 ellenőrzés, TV nélkül
 python3 devtools/faketv.py --port 8475 # hamis DLNA-készülék a hálózatra
 python3 devtools/selftest.py <mappa>   # 16 ellenőrzés valódi készülékkel
 ```

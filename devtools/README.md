@@ -15,8 +15,8 @@ python3 devtools/selftest.py <médiamappa>
 
 | eszköz | mit mér | kell hozzá készülék? |
 |---|---|---|
-| `logictest.py` | 51 ellenőrzés: állapotgép, folytatás, ütközések, némítás, elemváltás, akadozás, idegen tartalom | nem |
-| `apitest.py` | 30 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság, platformfüggés, forgalom, feliratkódolás | nem |
+| `logictest.py` | 52 ellenőrzés: állapotgép, folytatás, ütközések, némítás, elemváltás, akadozás, idegen tartalom | nem |
+| `apitest.py` | 32 ellenőrzés: útvonalak, hibás bemenetek, párhuzamosság, platformfüggés, forgalom, feliratkódolás | nem |
 | `faketv.py` | hamis DLNA-készülék a hálózaton | nem |
 | `selftest.py` | 16 ellenőrzés: a teljes lánc valódi TV-vel és valódi fájllal | **igen** |
 
@@ -68,6 +68,7 @@ A készülék viselkedése forgatókönyvenként állítható:
 | `nincs_pozicio=True` | `RelTime = NOT_IMPLEMENTED`: sosem jelent pozíciót |
 | `uri_atir=True` | átírja a kapott cím gépnevét, ahogy egyes készülékek |
 | `hamis_stop=True` | egyetlen leolvasásra `STOPPED`-ot hazudik, közben megy tovább |
+| `poz_hiba=N` | a következő N `GetPositionInfo` hívás elbukik, az állapoté nem |
 
 Amit lefed: folytatás háromféle készüléken · a mentett pont védelme ·
 feladás és értesítés · felhasználói felülbírálás · váratlan újraindulás ·
