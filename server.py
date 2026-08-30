@@ -70,6 +70,21 @@ LANG_NAMES = {'hu': 'magyar', 'en': 'angol', 'eng': 'angol', 'hun': 'magyar',
 NUM_RE = re.compile(r'(\d+)')
 
 
+def utf8_biztos(path):
+    """Kiírható-e ez az útvonal URL-be és az állapotfájlba?
+
+    A Linux megengedi a nem UTF-8 fájlnevet; a Python ilyenkor helyettesítő
+    (surrogate) karaktereket ad vissza. Abból viszont sem a quote() nem tud
+    URL-t csinálni, sem a json.dump állapotfájlt - mindkettő kivétellel száll
+    el, és egyetlen ilyen fájl az egész mappát böngészhetetlenné tenné.
+    """
+    try:
+        path.encode('utf-8')
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
 def natkey(name):
     """Természetes rendezés: 'S01E02' < 'S01E10'.
 
@@ -480,12 +495,23 @@ def list_dir(path, show_hidden=False):
         if not show_hidden and name.startswith('.'):
             continue
         full = os.path.join(path, name)
+        if not utf8_biztos(full):
+            continue
         try:
             is_dir = e.is_dir(follow_symlinks=True)
         except OSError:
             continue
         if is_dir:
             dirs.append({'name': name, 'path': full})
+            continue
+
+        # A törött szimbolikus link nem mappa, tehát fájlként listáznánk -
+        # kiszolgálni viszont nem lehet. Ami a listában van, azt el is kell
+        # tudni indítani.
+        try:
+            if not e.is_file(follow_symlinks=True):
+                continue
+        except OSError:
             continue
 
         ext = os.path.splitext(name)[1].lower()

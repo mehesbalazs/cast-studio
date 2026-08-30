@@ -78,6 +78,13 @@ def nyers(kérés, timeout=5):
     return data
 
 
+def server_modul():
+    """Az app szerver-modulja in-process, a tiszta függvények próbájához."""
+    sys.path.insert(0, APP)
+    import server                                            # noqa: E402
+    return server
+
+
 def platform_probak():
     """Windowsra jellemző buktatók, itthonról is mérhetően.
 
@@ -167,6 +174,9 @@ def main():
     # A felső indexű '²' isdigit(), de int()-re hibát dob: egy ilyen nevű mappa
     # a rendezésnél elhasalt, és az egész könyvtár 500-assá vált.
     os.makedirs(os.path.join(root, '100²'), exist_ok=True)
+    # Törött link: nem mappa, tehát fájlként listáznánk - kiszolgálni viszont
+    # nem lehetne, vagyis a listában egy elindíthatatlan elem jelenne meg.
+    os.symlink('/nincs/ilyen/sehol.mp4', os.path.join(root, 'torott.mp4'))
     # Több feliratszerkesztő egy számjegyű órát ír: a WebVTT ezt elutasítja,
     # és a lejátszó némán feliratok nélkül marad.
     egyjegyu = os.path.join(root, 'ora.srt')
@@ -210,11 +220,20 @@ def main():
             'gyökéren kívülre nem enged')
         say(req('/')[0] == 200 and req('/index.html')[0] == 200,
             'a felület kiszolgálható')
-        c1, _ = req('/api/browse?path=' + q(root, safe=''))
+        c1, d1 = req('/api/browse?path=' + q(root, safe=''))
         c2, _ = req('/api/scan?path=' + q(root, safe=''))
         say(c1 == 200 and c2 == 200,
             'a különös nevű mappa nem teszi böngészhetetlenné a könyvtárat',
             'browse %s, scan %s' % (c1, c2))
+
+        # Amit felkínálunk, azt ki is kell tudni szolgálni.
+        nevek = [f['name'] for f in json.loads(d1).get('files', [])] if c1 == 200 else []
+        say('torott.mp4' not in nevek,
+            'törött linket nem kínál fel a lista', ', '.join(nevek[:6]) or 'üres')
+        say(server_modul().utf8_biztos('/tmp/film.mp4')
+            and not server_modul().utf8_biztos('/tmp/\udcff.mp4'),
+            'a nem UTF-8 fájlnevet kiszűrjük a listából',
+            'ilyen névből sem URL, sem állapotfájl nem készíthető')
 
         # -- hibás bemenetek: 4xx, ne 500 ------------------------------
         rossz = [('tömb törzs', '/api/dlna/queue', [1, 2, 3]),

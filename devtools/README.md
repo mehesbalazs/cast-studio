@@ -123,6 +123,7 @@ curl 'http://127.0.0.1:8475/control?offline=1'          # a készülék "eltűni
 curl 'http://127.0.0.1:8475/control?seek_lockout=25'    # 25 mp-ig 701-et ad
 curl 'http://127.0.0.1:8475/control?seek_ignore=1'      # elfogadja, nem mozdul
 curl 'http://127.0.0.1:8475/control?fail_action=Play'   # HTTP 500 arra a hívásra
+curl 'http://127.0.0.1:8475/control?fail_action='       # és így törölhető
 curl 'http://127.0.0.1:8475/control?slow=1.3'           # lassú válaszok
 curl 'http://127.0.0.1:8475/control?duration_zero=0'    # mégis jelentsen hosszt
 curl 'http://127.0.0.1:8475/control?volume_zero=0'

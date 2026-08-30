@@ -244,7 +244,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        q = parse_qs(parsed.query)
+        # keep_blank_values nelkul a 'fail_action=' alak NEM torolne a
+        # beallitast: a parse_qs eldobja az ures erteku parametert, es a
+        # vezerles nemam nem csinalna semmit.
+        q = parse_qs(parsed.query, keep_blank_values=True)
 
         # A vezérlő- és naplóvégpontok akkor is élnek, ha a TV "ki van kapcsolva".
         if parsed.path == '/control':
